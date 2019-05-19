@@ -6,7 +6,7 @@ This repo contains the code for the paper [Augmented Neural ODEs](https://arxiv.
 
 Comparison of Neural ODE and Augmented Neural ODE.
 
-[twitter gif]
+<img src="https://github.com/EmilienDupont/augmented-neural-odes/raw/master/imgs/summary.gif" width="500">
 
 ## Requirements
 
@@ -65,12 +65,13 @@ We also provide two demo notebooks that show how to reproduce some of the result
 
 ### Vector fields
 
-[Image of vector field thing]
+<img src="https://github.com/EmilienDupont/augmented-neural-odes/raw/master/imgs/vector_field.png" width="500">
+
 The `vector-field-visualizations.ipynb` notebook contains a demo and tutorial for reproducing the experiments on 1D ODE flows in the paper.
 
 ### Augmented neural ODEs
 
-[Feature evolution]
+<img src="https://github.com/EmilienDupont/augmented-neural-odes/raw/master/imgs/feature_history.png" width="600">
 
 The `augmented-neural-ode-example.ipynb` notebook contains a demo and tutorial for reproducing the experiments comparing Neural ODEs and Augmented Neural ODEs on simple 2D functions.
 
