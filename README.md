@@ -4,13 +4,11 @@ This repo contains the code for the paper [Augmented Neural ODEs](https://arxiv.
 
 ## Examples
 
-Comparison of Neural ODE and Augmented Neural ODE.
-
 <img src="https://github.com/EmilienDupont/augmented-neural-odes/raw/master/imgs/summary.gif" width="500">
 
 ## Requirements
 
-The requirements that can be directly installed from PyPi can be found in `requirements.txt`. This code also builds on the awesome `torchdiffeq` library, which provides different ODE solvers on GPU. Instructions for installing `torchdiffeq` can be found in this [repo](https://github.com/rtqichen/torchdiffeq).
+The requirements that can be directly installed from PyPi can be found in `requirements.txt`. This code also builds on the awesome `torchdiffeq` library, which provides various ODE solvers on GPU. Instructions for installing `torchdiffeq` can be found in this [repo](https://github.com/rtqichen/torchdiffeq).
 
 ## Usage
 
@@ -69,9 +67,9 @@ We also provide two demo notebooks that show how to reproduce some of the result
 
 The `vector-field-visualizations.ipynb` notebook contains a demo and tutorial for reproducing the experiments on 1D ODE flows in the paper.
 
-### Augmented neural ODEs
+### Augmented Neural ODEs
 
-<img src="https://github.com/EmilienDupont/augmented-neural-odes/raw/master/imgs/feature_history.png" width="600">
+<img src="https://github.com/EmilienDupont/augmented-neural-odes/raw/master/imgs/feature_history.png" width="800">
 
 The `augmented-neural-ode-example.ipynb` notebook contains a demo and tutorial for reproducing the experiments comparing Neural ODEs and Augmented Neural ODEs on simple 2D functions.
 
