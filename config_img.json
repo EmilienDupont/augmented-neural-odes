@@ -1,0 +1,32 @@
+{
+  "id": "mnist_experiments",
+  "num_reps": 5,
+  "dataset": "mnist",
+  "model_configs": [
+  {
+      "type": "anode",
+      "num_filters": 64,
+      "augment_dim": 5,
+      "time_dependent": true,
+      "lr": 1e-3,
+      "non_linearity": "relu",
+      "weight_decay": 0.0,
+      "validation": false
+  },
+  {
+      "type": "odenet",
+      "num_filters": 92,
+      "time_dependent": true,
+      "lr": 1e-3,
+      "non_linearity": "relu",
+      "weight_decay": 0.0,
+      "validation": false
+  }
+],
+  "training_config": {
+      "batch_size": 256,
+      "record_freq": 10,
+      "print_freq": 10,
+      "epochs": 20
+  }
+}

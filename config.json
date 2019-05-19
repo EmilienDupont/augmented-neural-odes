@@ -1,0 +1,45 @@
+{
+  "data_dim": 2,
+  "num_reps": 10,
+  "viz_batch_size": 512,
+  "datasets": [{
+      "type": "sphere",
+      "num_points_inner": 500,
+      "num_points_outer": 1500,
+      "inner_range": [0.0, 0.5],
+      "outer_range": [1.0, 1.5]
+  },
+  {
+      "type": "sine",
+      "shift": 1.4,
+      "num_points_lower": 1500,
+      "num_points_upper": 1500,
+      "noise_scale": 0.1
+  }],
+  "model_configs": [
+  {
+      "type": "resnet",
+      "hidden_dim": 32,
+      "num_layers": 5,
+      "lr": 1e-3
+  },
+  {
+      "type": "odenet",
+      "hidden_dim": 32,
+      "time_dependent": true,
+      "lr": 1e-3
+  },
+  {
+      "type": "anode",
+      "hidden_dim": 32,
+      "time_dependent": true,
+      "lr": 1e-3,
+      "augment_dim": 5
+  }],
+  "training_config": {
+      "batch_size": 64,
+      "record_freq": 20,
+      "print_freq": 20,
+      "epochs": 30
+  }
+}
