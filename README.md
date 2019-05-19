@@ -1,6 +1,6 @@
 # Augmented Neural ODEs
 
-This repo contains the code for the paper [Augmented Neural ODEs](https://arxiv.org/abs/1904.01681) (2019).
+This repo contains code for the paper [Augmented Neural ODEs](https://arxiv.org/abs/1904.01681) (2019).
 
 ## Examples
 
