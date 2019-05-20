@@ -367,10 +367,6 @@ def trajectory_plt(model, inputs, targets, timesteps, highlight_inputs=False,
     input_dim = model.data_dim + model.augment_dim
 
     if input_dim == 2:
-        # TODO: check if this is needed
-        # fig = plt.gcf()
-        # fig.set_size_inches(5, 5)
-
         # Plot starting and ending points of trajectories
         input_linewidths = 2 if highlight_inputs else 0
         plt.scatter(inputs_aug[:, 0].numpy(), inputs_aug[:, 1].numpy(), c=color,
