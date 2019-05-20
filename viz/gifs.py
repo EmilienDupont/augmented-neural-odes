@@ -131,12 +131,6 @@ def trajectory_gif(model, inputs, targets, timesteps, dpi=100, alpha=0.5,
         z_min -= margin * z_range
         z_max += margin * z_range
 
-    if model.odeblock.odefunc.augment_dim > 0:
-        aug = torch.zeros(inputs.shape[0], model.odeblock.odefunc.augment_dim)
-        inputs_aug = torch.cat([inputs, aug], 1)
-    else:
-        inputs_aug = inputs
-
     for t in range(timesteps):
         if num_dims == 2:
             plt.scatter(trajectories[t, :, 0].numpy(), trajectories[t, :, 1].numpy(), c=color,
@@ -144,7 +138,7 @@ def trajectory_gif(model, inputs, targets, timesteps, dpi=100, alpha=0.5,
 
             # For each point in batch, plot its trajectory
             if t > 0:
-                for i in range(inputs_aug.shape[0]):
+                for i in range(inputs.shape[0]):
                     trajectory = trajectories[:t + 1, i, :]
                     x_traj = trajectory[:, 0].numpy()
                     y_traj = trajectory[:, 1].numpy()
@@ -168,7 +162,7 @@ def trajectory_gif(model, inputs, targets, timesteps, dpi=100, alpha=0.5,
                        c=color, alpha=alpha, linewidths=0)
             # For each point in batch, plot its trajectory
             if t > 0:
-                for i in range(inputs_aug.shape[0]):
+                for i in range(inputs.shape[0]):
                     trajectory = trajectories[:t + 1, i, :]
                     x_traj = trajectory[:, 0].numpy()
                     y_traj = trajectory[:, 1].numpy()
