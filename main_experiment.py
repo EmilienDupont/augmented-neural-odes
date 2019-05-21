@@ -2,7 +2,7 @@ import sys
 import torch
 from experiments.experiments import run_and_save_experiments
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cpu')
 
 # Get config file from command line arguments
 if len(sys.argv) != 2:
