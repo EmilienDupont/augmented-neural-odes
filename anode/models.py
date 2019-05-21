@@ -82,47 +82,6 @@ class ODEFunc(nn.Module):
         return out
 
 
-class ODEFuncCounterExample(nn.Module):
-    """Vector field where ResNets work but Neural ODEs fail.
-    """
-    def __init__(self):
-        super(ODEFuncCounterExample, self).__init__()
-        self.data_dim = 1
-        self.augment_dim = 0
-
-    def forward(self, t, x):
-        """
-        Parameters
-        ----------
-        t : float
-            Current time.
-
-        x : torch.Tensor
-            Shape (batch_size, data_dim)
-        """
-        alpha = - 12. * torch.tanh(3. * x)
-        a = 2 * pi / 20.
-        b = 0.5
-        trig_arg = torch.Tensor([a * (t - b)])
-        extra = 0
-        delta = 0.18
-        if t > 0.2 and t < 0.3:
-            x_val = x[0].item()
-            if x_val > 0 and x_val < 0.1:
-                extra = -0.5
-            elif x_val < 0 and x_val > -0.1:
-                extra = 0.5
-
-        if t > 0.5:
-            x_val = x[0].item()
-            if x_val < 0 and x_val > - delta:
-                extra = -2
-            elif x_val > 0 and x_val < delta:
-                extra = 2
-
-        return -2 * alpha * torch.sin(trig_arg) * torch.cos(trig_arg) + extra
-
-
 class ODEBlock(nn.Module):
     """Solves ODE defined by odefunc.
 
