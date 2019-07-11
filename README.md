@@ -18,7 +18,8 @@ The usage pattern is simple:
 # ... Load some data ...
 
 import torch
-from anode.models import ODENet, ConvODENet
+from anode.conv_models import ConvODENet
+from anode.models import ODENet
 from anode.training import Trainer
 
 # Instantiate a model
