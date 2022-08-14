@@ -26,7 +26,7 @@ class Data1D(Dataset):
         Defaults to 0.0 (i.e. no noise). Otherwise, corresponds to standard
         deviation of white noise added to each point.
     """
-    def __init__(self, num_points, target_flip=False, noise_scale=0.0):
+    def __init__(self, num_points, target_flip=False, noise_scale=1e-6):
         self.num_points = num_points
         self.target_flip = target_flip
         self.noise_scale = noise_scale
