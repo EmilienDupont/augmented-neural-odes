@@ -1,0 +1,17 @@
+device: 'cpu'
+data:
+  dim: 1
+  num_points: 500
+  flipped: True # flipped data is hard, non-flipped is easy
+training:
+  num_epochs: 50
+  hidden_dim: 16
+  lr: 5e-4
+  print_freq: 5
+viz:
+  subdir: "experiments_2/results"
+  num_points: 10
+  timesteps: 10
+  h_min: -1.5
+  h_max: 1.5
+
