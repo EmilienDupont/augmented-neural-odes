@@ -1,17 +1,22 @@
 device: 'cpu'
 data:
-  dim: 1
+  dim: 1 # FIXME currently supporting 1d experiments only !
   num_points: 500
   flipped: True # flipped data is hard, non-flipped is easy
 training:
-  num_epochs: 50
-  hidden_dim: 16
+  num_epochs: 150
+  hidden_dim: 8
   lr: 5e-4
   print_freq: 5
+resnet:
+  num_layers : 20 # this will be used also as timesteps for visualization
+anode:
+  augment_dim : 1
+  non_linearity : 'relu'
 viz:
   subdir: "experiments_2/results"
   num_points: 10
-  timesteps: 10
+  # timesteps: 10 : number of layers from resnet models will be used as the value for timesteps
   h_min: -1.5
   h_max: 1.5
 

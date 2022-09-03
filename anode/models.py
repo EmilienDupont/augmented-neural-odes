@@ -3,7 +3,6 @@ import torch.nn as nn
 from math import pi
 from torchdiffeq import odeint, odeint_adjoint
 
-
 MAX_NUM_STEPS = 1000  # Maximum number of steps for ODE solver
 
 
@@ -30,6 +29,7 @@ class ODEFunc(nn.Module):
     non_linearity : string
         One of 'relu' and 'softplus'
     """
+
     def __init__(self, device, data_dim, hidden_dim, augment_dim=0,
                  time_dependent=False, non_linearity='relu'):
         super(ODEFunc, self).__init__()
@@ -102,6 +102,7 @@ class ODEBlock(nn.Module):
         If True calculates gradient with adjoint method, otherwise
         backpropagates directly through operations of ODE solver.
     """
+
     def __init__(self, device, odefunc, is_conv=False, tol=1e-3, adjoint=False):
         super(ODEBlock, self).__init__()
         self.adjoint = adjoint
@@ -130,7 +131,6 @@ class ODEBlock(nn.Module):
             integration_time = torch.tensor([0, 1]).float().type_as(x)
         else:
             integration_time = eval_times.type_as(x)
-
 
         if self.odefunc.augment_dim > 0:
             if self.is_conv:
@@ -174,7 +174,8 @@ class ODEBlock(nn.Module):
             Number of timesteps in trajectory.
         """
         integration_time = torch.linspace(0., 1., timesteps)
-        return self.forward(x, eval_times=integration_time)
+        tmp = self.forward(x, eval_times=integration_time)
+        return tmp
 
 
 class ODENet(nn.Module):
@@ -211,6 +212,7 @@ class ODENet(nn.Module):
         If True calculates gradient with adjoint method, otherwise
         backpropagates directly through operations of ODE solver.
     """
+
     def __init__(self, device, data_dim, hidden_dim, output_dim=1,
                  augment_dim=0, time_dependent=False, non_linearity='relu',
                  tol=1e-3, adjoint=False):
@@ -223,10 +225,10 @@ class ODENet(nn.Module):
         self.time_dependent = time_dependent
         self.tol = tol
 
-        odefunc = ODEFunc(device, data_dim, hidden_dim, augment_dim,
+        self.odefunc = ODEFunc(device, data_dim, hidden_dim, augment_dim,
                           time_dependent, non_linearity)
 
-        self.odeblock = ODEBlock(device, odefunc, tol=tol, adjoint=adjoint)
+        self.odeblock = ODEBlock(device, self.odefunc, tol=tol, adjoint=adjoint)
         self.linear_layer = nn.Linear(self.odeblock.odefunc.input_dim,
                                       self.output_dim)
 
