@@ -14,7 +14,7 @@ from anode.discrete_models import ResNet
 from viz.plots import vector_field_plt, anode_plt
 
 
-class Experiment:
+class Experiment_1D:
     def __init__(self, device, model_name: str, data_loader, num_epochs: int, timestamp: str, results_subdir: str):
         self.ode_func = None
         self.logger = logging.getLogger()
@@ -89,9 +89,9 @@ class Experiment:
     def run_experiment_model(model_name: str, config: dict):
         logger = logging.getLogger()
         logger.info(f'Running experiment for model : {model_name}')
-        experiment_ = Experiment(device=device, model_name=model_name, data_loader=dataloader,
-                                 num_epochs=config['training']['num_epochs'],
-                                 results_subdir=config['viz']['subdir'], timestamp=experiment_timestamp)
+        experiment_ = Experiment_1D(device=device, model_name=model_name, data_loader=dataloader,
+                                    num_epochs=config['training']['num_epochs'],
+                                    results_subdir=config['viz']['subdir'], timestamp=experiment_timestamp)
         if model_name == 'resnet':
             experiment_.init_model(lr=config['training']['lr'], print_freq=config['training']['print_freq'],
                                    data_dim=config['data']['dim'], hidden_dim=config['training']['hidden_dim'],
@@ -184,4 +184,4 @@ if __name__ == '__main__':
     # model_names = ['node', 'resnet', 'anode', 'ttde']
     model_names = ['anode']
     for model_name in model_names:
-        Experiment.run_experiment_model(model_name=model_name, config=config)
+        Experiment_1D.run_experiment_model(model_name=model_name, config=config)

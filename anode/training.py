@@ -67,10 +67,12 @@ class Trainer():
 
         num_epochs : int
         """
+        avg_loss = None
         for epoch in range(num_epochs):
             avg_loss = self._train_epoch(data_loader)
-            if self.verbose:
-                print("Epoch {}: {:.3f}".format(epoch + 1, avg_loss))
+            # if self.verbose:
+            #     print("Epoch {}: {:.3f}".format(epoch + 1, avg_loss))
+        return avg_loss
 
     def _train_epoch(self, data_loader):
         """Trains model for an epoch.

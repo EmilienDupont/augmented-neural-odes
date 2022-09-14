@@ -17,23 +17,32 @@ all_categorical_colors = ['#1f77b4', '#aec7e8', '#ff7f0e', '#ffbb78', '#2ca02c',
 
 
 def anode_plt(model, num_points, timesteps, inputs, targets, h_min=-2, h_max=2, t_max=1, save_fig=None):
-    # importing mplot3d toolkits, numpy and matplotlib
-    from mpl_toolkits import mplot3d
-
+    """"
+    """
+    """
+    References:
+    https://matplotlib.org/stable/gallery/mplot3d/scatter3d.html
+    https://matplotlib.org/stable/gallery/mplot3d/lines3d.html 
+    """
     # syntax for 3-D projection
     ax = plt.axes(projection='3d')
+    # plot inputs
+    color = ['red' if targets[i, 0] > 0 else 'blue' for i in range(len(inputs))]
+    ax.scatter(xs=[0] * len(inputs), ys=inputs[:, 0].numpy(), zs=[0] * len(inputs), color=color, s=80)
 
-    # defining all 3 axes
-    t = np.linspace(0,t_max,timesteps)
-    h_0 = np.sin(np.pi*t)
-    h_1 = np.cos(np.pi * t)
-
-    # plotting
-    ax.plot3D(t, h_0, h_1, 'red')
+    # plot targets
+    ax.scatter(xs=[t_max] * len(targets), ys=targets[:, 0].numpy(), zs=[0] * len(targets), color=color, s=80)
+    # plot trajectory
+    t = np.linspace(0, t_max, timesteps)
+    for i in range(len(inputs)):
+        init_point = inputs[i:i + 1]
+        trajectory = model.trajectory(init_point, timesteps)
+        ax.plot(xs=t, ys=trajectory[:, 0, 0].detach().numpy(), zs=trajectory[:, 0, 1].detach().numpy(), c=color[i],
+                linewidth=2)
     ax.set_title('ANODE trajectory for 1D input->target')
-    ax.set_zlabel('t')
-    ax.set_xlabel('h[0]')
-    ax.set_ylabel('h[1]')
+    ax.set_zlabel('h[1]')
+    ax.set_xlabel('t')
+    ax.set_ylabel('h[0]')
     if len(save_fig):
         plt.savefig(save_fig, format='png', dpi=400, bbox_inches='tight')
         plt.clf()
@@ -83,7 +92,7 @@ def vector_field_plt(odefunc, num_points, timesteps, inputs=None, targets=None,
     """
     t, hidden, dtdt, dhdt = ode_grid(odefunc, num_points, timesteps,
                                      h_min=h_min, h_max=h_max, t_max=t_max)
-    # Create meshgrid and vector field plot
+    # Create mesh-grid and vector field plot
     t_grid, h_grid = np.meshgrid(t, hidden, indexing='ij')
     plt.quiver(t_grid, h_grid, dtdt, dhdt, width=0.004, alpha=0.6)
 
@@ -293,7 +302,7 @@ def single_feature_plt(features, targets, save_fig=''):
     ax.set_aspect(get_square_aspect_ratio(ax))
 
     if len(save_fig):
-        fig.savefig(save_fig, format='png', dpi=200, bbox_inches='tight')
+        plt.savefig(save_fig, format='png', dpi=200, bbox_inches='tight')
         plt.clf()
         plt.close()
     else:
@@ -350,6 +359,20 @@ def multi_feature_plt(features, targets, save_fig=''):
         plt.close()
     else:
         plt.show()
+
+
+def iteration_plt(histories, y, save_fig=''):
+    assert y in ['loss', 'nfe']
+    y = y + "_history"
+    plt.plot(histories[y])
+    plt.xlim(0, len(histories[y]) - 1)
+    plt.ylim(0)
+    plt.xlabel('Iterations')
+    plt.ylabel(y)
+    if len(save_fig):
+        plt.savefig(save_fig, format='png', dpi=400, bbox_inches='tight')
+        plt.clf()
+        plt.close()
 
 
 def trajectory_plt(model, inputs, targets, timesteps, highlight_inputs=False,
@@ -621,10 +644,10 @@ def get_feature_history(trainer, dataloader, inputs, targets, num_epochs):
     feature_history.append(features.detach())
 
     for i in range(num_epochs):
-        trainer.train(dataloader, 1)
+        loss = trainer.train(dataloader, 1)  # work around
         features, _ = trainer.model(inputs, return_features=True)
         feature_history.append(features.detach())
-
+        print(f'Epoch = {i + 1} : loss = {loss}')
     return feature_history
 
 

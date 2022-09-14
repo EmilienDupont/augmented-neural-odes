@@ -174,7 +174,7 @@ class ODEBlock(nn.Module):
             Number of timesteps in trajectory.
         """
         integration_time = torch.linspace(0., 1., timesteps)
-        tmp = self.forward(x, eval_times=integration_time)
+        tmp = self.forward(x, eval_times=integration_time)  # FIXME : for debugging
         return tmp
 
 
@@ -226,7 +226,7 @@ class ODENet(nn.Module):
         self.tol = tol
 
         self.odefunc = ODEFunc(device, data_dim, hidden_dim, augment_dim,
-                          time_dependent, non_linearity)
+                               time_dependent, non_linearity)
 
         self.odeblock = ODEBlock(device, self.odefunc, tol=tol, adjoint=adjoint)
         self.linear_layer = nn.Linear(self.odeblock.odefunc.input_dim,
@@ -238,3 +238,11 @@ class ODENet(nn.Module):
         if return_features:
             return features, pred
         return pred
+
+    def trajectory(self, x, timesteps):
+        features_trajectory = self.odeblock.trajectory(x, timesteps)
+        features = self.odeblock(x)
+        pred = self.linear_layer(features)
+        features_trajectory[timesteps-1,0,0] = pred.item() # FIXME : assume data_dim = 1
+        features_trajectory[timesteps-1, 0, 1] = 0 # FIXME : assume augment_dim = 1
+        return features_trajectory
