@@ -1,78 +1,89 @@
 import typing
 from typing import List, Tuple, Iterable
+
+import numpy as np
+import scipy.integrate
 import torch
 import numpy.typing as npt
-
-from experiments_2.tde.tensor_ode_solvers import TensorODESolver
-
-
-class TensorDiffEq(torch.nn.Module):
-    def __init__(self, input_dimensions: [int, List[int]], output_dimensions: [int, List[int]],
-                 tensor_dimensions: List[int]):
-        """
-
-        Parameters
-        ----------
-        output_dimensions : output tensor dimension(s), can be int if input is a vector, list if input is a tensor
-        input_dimensions : input tensor dimension(s), can be int if input is a vector, list if input is a tensor
-        tensor_dimensions : dimensions for the internal tensor A(t)
-
-        """
-        super().__init__()
-        self.output_dimension = output_dimensions
-        self.input_dimension = input_dimensions
-        self.tensor_dimensions = tensor_dimensions
-        P_dimension = [input_dimensions] if isinstance(input_dimensions, int) else input_dimensions
-        P_dimension.extend(tensor_dimensions)
-        F_dimension = tensor_dimensions
-        F_dimension.extend([1])  # for time-dependent F
-        F_dimension.extend(output_dimensions if isinstance(output_dimensions, list) else [output_dimensions])
-        self.P = torch.distributions.Uniform(low=0.01, high=1.0).sample(sample_shape=P_dimension)
-        self.U = torch.distributions.Uniform(low=0.01, high=1.0).sample(sample_shape=tensor_dimensions)
-        self.F = torch.distributions.Uniform(low=0.01, high=1.0).sample(sample_shape=F_dimension)
-
-    def forward(self): from typing import List
-
-
-import torch
+from scipy.integrate import solve_ivp
 
 
 class TensorDiffEq(torch.nn.Module):
     def __init__(self, input_dimensions: [int, List[int]], output_dimensions: [int, List[int]],
-                 tensor_dimensions: List[int], t_span: Tuple, t_eval: List):
-        """
-
-        Parameters
-        ----------
-        output_dimensions : output tensor dimension(s), can be int if input is a vector, list if input is a tensor
-        input_dimensions : input tensor dimension(s), can be int if input is a vector, list if input is a tensor
-        tensor_dimensions : dimensions for the internal tensor A(t)
-
-        """
+                 tensor_dimensions: List[int], t_span: Tuple, t_eval: List = None):
         super().__init__()
-        self.output_dimension = output_dimensions
-        self.input_dimension = input_dimensions
+        self.output_dimensions = output_dimensions
+        self.input_dimensions = input_dimensions
         self.tensor_dimensions = tensor_dimensions
-        P_dimension = tensor_dimensions
-        aug_dim = [input_dimensions] if isinstance(input_dimensions, int) else input_dimensions[::-1]
-        P_dimension.extend(aug_dim)
-        F_dimension = tensor_dimensions
-        F_dimension.extend([1])  # for time-dependent F
-        F_dimension.extend(output_dimensions if isinstance(output_dimensions, list) else [output_dimensions])
-        self.P = torch.nn.Parameter(torch.distributions.Uniform(low=0.01, high=1.0).sample(sample_shape=P_dimension))
+
+        # P_dimensions
+        P_sizes = [input_dimensions] if isinstance(input_dimensions, int) else input_dimensions[::-1]
+        P_sizes.extend(tensor_dimensions)
+
+        # U dimensions
+        U_sizes = tensor_dimensions[::-1]
+        U_sizes.extend(tensor_dimensions)
+
+        # F_dimension
+
+        F_sizes = tensor_dimensions[::-1]  # for time-dependent F
+        F_sizes.extend(output_dimensions if isinstance(output_dimensions, list) else [output_dimensions])
+        self.P = torch.nn.Parameter(torch.distributions.Uniform(low=0.01, high=1.0).sample(sample_shape=P_sizes))
         self.U = torch.nn.Parameter(
-            torch.distributions.Uniform(low=0.01, high=1.0).sample(sample_shape=tensor_dimensions))
-        self.F = torch.nn.Parameter(torch.distributions.Uniform(low=0.01, high=1.0).sample(sample_shape=F_dimension))
+            torch.distributions.Uniform(low=0.01, high=1.0).sample(sample_shape=U_sizes))
+        self.F = torch.nn.Parameter(torch.distributions.Uniform(low=0.01, high=1.0).sample(sample_shape=F_sizes))
         # Create solver
-        self.tensor_ode_solver = TensorODESolver()
         assert t_span[0] < t_span[1], "t_span[0] must be < t_span[1]"
-        assert t_eval[0] >= t_span[0] and t_eval[1] <= t_span[1], "t_eval must be subset of t_span ranges"
+        if t_eval is not None:
+            assert t_eval[0] >= t_span[0] and t_eval[1] <= t_span[1], "t_eval must be subset of t_span ranges"
 
-    def forward(self, x: torch.Tensor, t_span, t_eval=None):
+    def forward(self, x: torch.Tensor):
+        """
+
+        Parameters
+        ----------
+        x
+        t_span
+        t_eval
+
+        Returns
+        -------
+
+        """
         assert len(x.size()) == 2, "No support for batch inputs with d>1 yet"
-        z0 = torch.tensordot(a=x, b=self.P, dims=([1], [0]))
-        sol = self.tensor_ode_solver.solve(y0=z0, fun=TensorDiffEq.odefunc, t_span=t_span, t_eval=t_eval)
+        z0 = x  # redundant but useful for convention convenience
+        A0 = torch.tensordot(a=z0, b=self.P, dims=([1], [0]))
+        A0_flattened = torch.flatten(A0).detach().numpy()
+        A_sizes = A0.size()
+        sol = solve_ivp(fun=TensorDiffEq.odefunc, t_span=(0, 1), y0=A0_flattened, args=(A_sizes, self.U, None))
+        A_f = torch.tensor(np.transpose(sol.y)[-1]).view(A_sizes).to(torch.float32)
+        y_hat = torch.tensordot(a=A_f, b=self.F, dims=([1, 2, 3], [0, 1, 2]))
+        return y_hat
 
     @staticmethod
-    def odefunc(t: float, z: npt.ArrayLike, z_shape: typing.List, U: torch.Tensor, non_linear=str):
-        pass
+    def odefunc(t: float, A_flattened: npt.ArrayLike, A_sizes: torch.Size, U: torch.Tensor, non_linear: str = None):
+        """
+
+        Parameters
+        ----------
+        t
+        A_flattened
+        A_sizes
+        U
+        non_linear
+
+        Returns
+        -------
+
+        """
+        # TODO
+        """
+        Experiment 
+        1. Time invariant U
+        2. Time-variant U as diag(t) . U
+        3. Non-linearity with U
+        """
+        A = torch.Tensor(A_flattened).view(A_sizes)
+        A_out = torch.tensordot(A, U, dims=([1, 2, 3], [0, 1, 2]))
+        A_out_flattened = torch.flatten(A_out).detach().numpy()
+        return A_out_flattened
