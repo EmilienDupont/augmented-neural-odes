@@ -1,3 +1,4 @@
+import logging
 from abc import ABC, abstractmethod
 from typing import Callable, Tuple, Iterable
 
@@ -5,7 +6,7 @@ import torch
 
 
 class TorchODESolverSolution:
-    def __init__(self, zf: torch.Tensor, z_trajectory: Iterable[torch.Tensor],t_values: Iterable[float]):
+    def __init__(self, zf: torch.Tensor, z_trajectory: Iterable[torch.Tensor], t_values: Iterable[float]):
         """
 
         Parameters
@@ -19,10 +20,11 @@ class TorchODESolverSolution:
 
 
 class TorchODESolver(ABC):
-    def __init__(self, method: str):
-        self.method = method
+    def __init__(self, step_size: [float, str] = 0.01):
+        self.step_size = step_size
+        self.logger = logging.getLogger()
 
     @abstractmethod
     def solve_ivp(self, func: Callable[[float, torch.Tensor, ...], torch.Tensor], t_span: Tuple,
-                  z0: torch.Tensor) -> TorchODESolverSolution:
+                  z0: torch.Tensor,args:Tuple = None) -> TorchODESolverSolution:
         pass
