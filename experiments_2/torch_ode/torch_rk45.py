@@ -23,11 +23,11 @@ from experiments_2.torch_ode.torch_ode_solver import TorchODESolver, TorchODESol
 
 class TorchRK45(TorchODESolver):
     # from https://github.com/scipy/scipy/blob/v1.9.2/scipy/integrate/_ivp/rk.py#L366
-    TORCH_DTYPE = torch.float64
+    DTYPE = torch.float64
     ORDER = 5
     ERROR_ESTIMATOR_ORDER = 4
     N_STAGES = 6
-    C = torch.tensor([0, 1 / 5, 3 / 10, 4 / 5, 8 / 9, 1], dtype=TORCH_DTYPE)
+    C = torch.tensor([0, 1 / 5, 3 / 10, 4 / 5, 8 / 9, 1], dtype=DTYPE)
     A = torch.tensor([
         [0, 0, 0, 0, 0],
         [1 / 5, 0, 0, 0, 0],
@@ -35,9 +35,9 @@ class TorchRK45(TorchODESolver):
         [44 / 45, -56 / 15, 32 / 9, 0, 0],
         [19372 / 6561, -25360 / 2187, 64448 / 6561, -212 / 729, 0],
         [9017 / 3168, -355 / 33, 46732 / 5247, 49 / 176, -5103 / 18656]
-    ], dtype=TORCH_DTYPE)
-    B = torch.tensor([35 / 384, 0, 500 / 1113, 125 / 192, -2187 / 6784, 11 / 84], dtype=TORCH_DTYPE)
-    E = torch.tensor([-71 / 57600, 0, 71 / 16695, -71 / 1920, 17253 / 339200, -22 / 525, 1 / 40], dtype=TORCH_DTYPE)
+    ], dtype=DTYPE)
+    B = torch.tensor([35 / 384, 0, 500 / 1113, 125 / 192, -2187 / 6784, 11 / 84], dtype=DTYPE)
+    E = torch.tensor([-71 / 57600, 0, 71 / 16695, -71 / 1920, 17253 / 339200, -22 / 525, 1 / 40], dtype=DTYPE)
 
     SAFETY = 0.9
     MIN_FACTOR = 0.2
@@ -51,7 +51,7 @@ class TorchRK45(TorchODESolver):
 
     def solve_ivp(self, func: Callable[[float, torch.Tensor, ...], torch.Tensor], t_span: Tuple,
                   z0: torch.Tensor, args: Tuple = None) -> TorchODESolverSolution:
-        assert z0.dtype == TorchRK45.TORCH_DTYPE, f"Tensor must be of type {TorchRK45.TORCH_DTYPE}"
+        assert z0.dtype == TorchRK45.DTYPE, f"Tensor must be of type {TorchRK45.DTYPE}"
         # step adaptation to align tf correctly
         t0, tf = t_span
         # simplify func signature
@@ -65,7 +65,7 @@ class TorchRK45(TorchODESolver):
         t_values = [t0]
         K_sizes = [TorchRK45.N_STAGES + 1]
         K_sizes.extend(list(z0.size()))
-        self.K = torch.empty(K_sizes, dtype=TorchRK45.TORCH_DTYPE)
+        self.K = torch.empty(K_sizes, dtype=TorchRK45.DTYPE)
 
         f0 = func(t0, z0)
         h = torch_select_initial_step(fun=func, t0=t0, y0=z0, f0=f0, direction=1, order=self.ERROR_ESTIMATOR_ORDER,

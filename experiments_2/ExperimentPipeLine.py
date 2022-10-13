@@ -77,9 +77,11 @@ class ExperimentPipeline:
                                                           loss_func=loss_func, num_epochs=num_epochs, lr=1e-3,
                                                           print_freq=20)
 
-        self.tensor_diff_eq_trainer.train(verbose=True)
-        avg_loss = self.tensor_diff_eq_trainer.evaluate()
+        self.tensor_diff_eq_trainer.train(model=tensor_diff_eq_model, verbose=True)
+        avg_loss = self.tensor_diff_eq_trainer.evaluate(model=tensor_diff_eq_model)
         self.logger.info(f'average loss = {avg_loss}')
+        # model diagnosis
+        self.tensor_diff_eq_trainer.diagnose(model=tensor_diff_eq_model)
 
 
 if __name__ == '__main__':

@@ -229,6 +229,8 @@ class ODENet(nn.Module):
                                time_dependent, non_linearity)
 
         self.odeblock = ODEBlock(device, self.odefunc, tol=tol, adjoint=adjoint)
+        # self.odeblock.odefunc.input_dim = data_dim + augment_dim
+        # The role of linear layer y= A^T . X + B is to transform feature_dim (odefunc.input_dim) to output_dim
         self.linear_layer = nn.Linear(self.odeblock.odefunc.input_dim,
                                       self.output_dim)
 
@@ -243,6 +245,6 @@ class ODENet(nn.Module):
         features_trajectory = self.odeblock.trajectory(x, timesteps)
         features = self.odeblock(x)
         pred = self.linear_layer(features)
-        features_trajectory[timesteps-1,0,0] = pred.item() # FIXME : assume data_dim = 1
-        features_trajectory[timesteps-1, 0, 1] = 0 # FIXME : assume augment_dim = 1
+        features_trajectory[timesteps - 1, 0, 0] = pred.item()  # FIXME : assume data_dim = 1
+        features_trajectory[timesteps - 1, 0, 1] = 0  # FIXME : assume augment_dim = 1
         return features_trajectory

@@ -33,6 +33,7 @@ class Trainer():
         This is useful for training models when underflow in the time step or
         excessively large NFEs may occur.
     """
+
     def __init__(self, model, optimizer, device, classification=False,
                  print_freq=10, record_freq=10, verbose=True, save_dir=None):
         self.model = model

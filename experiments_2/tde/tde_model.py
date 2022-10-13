@@ -28,14 +28,18 @@ class TensorDiffEq(torch.nn.Module):
 
         F_sizes = tensor_dimensions[::-1]  # for time-dependent F
         F_sizes.extend(output_dimensions if isinstance(output_dimensions, list) else [output_dimensions])
-        self.P = torch.nn.Parameter(torch.distributions.Uniform(low=0.01, high=1.0).sample(sample_shape=P_sizes))
+        self.P = torch.nn.Parameter(torch.distributions.Uniform(low=0.01, high=1.0).sample(sample_shape=P_sizes),
+                                    requires_grad=True)
         self.U = torch.nn.Parameter(
-            torch.distributions.Uniform(low=0.01, high=1.0).sample(sample_shape=U_sizes))
-        self.F = torch.nn.Parameter(torch.distributions.Uniform(low=0.01, high=1.0).sample(sample_shape=F_sizes))
+            torch.distributions.Uniform(low=0.01, high=1.0).sample(sample_shape=U_sizes), requires_grad=False)
+        self.F = torch.nn.Parameter(torch.distributions.Uniform(low=0.01, high=1.0).sample(sample_shape=F_sizes),
+                                    requires_grad=False)
+
         # Create solver
         assert t_span[0] < t_span[1], "t_span[0] must be < t_span[1]"
         if t_eval is not None:
             assert t_eval[0] >= t_span[0] and t_eval[1] <= t_span[1], "t_eval must be subset of t_span ranges"
+        self.monitor = {'U': [self.U], 'P': [self.P], 'F': [self.F]}
 
     def forward(self, x: torch.Tensor):
         """
@@ -50,7 +54,16 @@ class TensorDiffEq(torch.nn.Module):
         -------
 
         """
+        # Record parameters for monitoring
+
+        self.monitor['U'].append(torch.clone(self.U).detach())
+        self.monitor['P'].append(torch.clone(self.P).detach())
+        self.monitor['F'].append(torch.clone(self.F).detach())
+
+        # param check
         assert len(x.size()) == 2, "No support for batch inputs with d>1 yet"
+
+        # start forward pass
         z0 = x  # redundant but useful for convention convenience
         A0 = torch.tensordot(a=z0, b=self.P, dims=([1], [0]))
         A0_flattened = torch.flatten(A0).detach().numpy()
@@ -78,6 +91,9 @@ class TensorDiffEq(torch.nn.Module):
         """
         # TODO
         """
+        Monitor:
+        1. Parameter U,P,F evolution over time
+        2. Loss evolution overtime
         Experiment 
         1. Time invariant U
         2. Time-variant U as diag(t) . U
