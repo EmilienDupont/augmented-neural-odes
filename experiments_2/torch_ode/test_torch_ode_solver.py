@@ -14,7 +14,7 @@ def test_setup():
     logging.basicConfig(level=logging.INFO)
 
 
-def assert_tensors(tensor1: torch.Tensor, tensor2: torch.Tensor, eps: float = 1e-3):
+def assert_tensors(tensor1: torch.Tensor, tensor2: torch.Tensor, eps: float = 1e-6):
     return torch.norm(tensor1 - tensor2) <= eps
 
 
@@ -23,9 +23,9 @@ def test_torch_euler_1():
     def f(t: float, z: torch.Tensor):
         return z
 
-    z0 = torch.tensor([1.0], dtype=TorchRK45.TORCH_DTYPE)
+    z0 = torch.tensor([1.0], dtype=TorchRK45.DTYPE)
     h = 0.01
-    zf = torch.tensor([16.0], dtype=TorchRK45.TORCH_DTYPE)
+    zf = torch.tensor([16.0], dtype=TorchRK45.DTYPE)
     euler_torch_ode_solver = TorchEulerSolver(step_size=h)
     sol = euler_torch_ode_solver.solve_ivp(func=f, t_span=(0.0, 4.0), z0=z0)
     assert_tensors(sol.zf, zf)
@@ -92,7 +92,7 @@ def test_torch_rk45_1():
     sol_scipy = solve_ivp(fun=exponential_decay, t_span=t_span, y0=z0_vec, method='RK45')
     # get ground truth
     zf_actual_tensor = torch.tensor([sol_scipy.y[:, -1]])
-    z0_tensor = torch.tensor([2, 4, 8],dtype=TorchRK45.TORCH_DTYPE)
+    z0_tensor = torch.tensor([2, 4, 8], dtype=TorchRK45.DTYPE)
     torch_rk45_solver = TorchRK45()
 
     sol_torch = torch_rk45_solver.solve_ivp(func=exponential_decay, z0=z0_tensor, t_span=t_span)
@@ -119,13 +119,13 @@ def test_torch_rk45_2():
     a, b, c, d = (1.5, 1, 3, 1)
     sol = solve_ivp(fun=lotkavolterra, t_span=t_span, y0=z0_vec, args=(a, b, c, d))
     # get ground truth
-    zf_actual_tensor = torch.tensor(sol.y[:, -1], dtype=TorchRK45.TORCH_DTYPE)
-    r = torch.tensor([a, -c], dtype=TorchRK45.TORCH_DTYPE)
-    A = torch.tensor([[0, -b], [d, 0]], dtype=TorchRK45.TORCH_DTYPE)
+    zf_actual_tensor = torch.tensor(sol.y[:, -1], dtype=TorchRK45.DTYPE)
+    r = torch.tensor([a, -c], dtype=TorchRK45.DTYPE)
+    A = torch.tensor([[0, -b], [d, 0]], dtype=TorchRK45.DTYPE)
 
     solver = TorchRK45()
     sol = solver.solve_ivp(func=lotkavolterra_generalized, t_span=t_span,
-                           z0=torch.tensor(z0_vec, dtype=TorchRK45.TORCH_DTYPE),
+                           z0=torch.tensor(z0_vec, dtype=TorchRK45.DTYPE),
                            args=(r, A))
     assert_tensors(zf_actual_tensor, sol.zf)
 
@@ -152,7 +152,135 @@ def test_torch_rk45_3():
     t_span = 0, 5
     z0 = [0, 0.01]
     sol = solve_ivp(fun=f_np, t_span=t_span, y0=z0, args=(a, b))
-    zf = torch.tensor(sol.y[:, -1], dtype=TorchRK45.TORCH_DTYPE)
+    zf = torch.tensor(sol.y[:, -1], dtype=TorchRK45.DTYPE)
     solver = TorchRK45()
-    sol2 = solver.solve_ivp(func=f_tensor, t_span=t_span, z0=torch.tensor(z0, dtype=TorchRK45.TORCH_DTYPE), args=(a, b))
+    sol2 = solver.solve_ivp(func=f_tensor, t_span=t_span, z0=torch.tensor(z0, dtype=TorchRK45.DTYPE), args=(a, b))
+    assert_tensors(zf, sol2.zf)
+
+
+def test_rk45_4():
+    # https://nl.mathworks.com/help/matlab/ref/ode45.html
+    # y'=2t
+    def func(t: float, y: np.ndarray):
+        return 2 * t
+
+    def func2(t: float, y: torch.Tensor):
+        return torch.tensor(2 * t, dtype=TorchRK45.DTYPE)
+
+    # get ground truth
+    z0 = [0]
+    t_span = 0, 5
+    sol = solve_ivp(fun=func, t_span=t_span, y0=z0)
+    zf = torch.tensor(sol.y[:, -1], dtype=TorchRK45.DTYPE)
+    solver = TorchRK45()
+    sol2 = solver.solve_ivp(func=func2, t_span=t_span, z0=torch.tensor(z0, dtype=TorchRK45.DTYPE))
+    assert_tensors(zf, sol2.zf)
+
+
+def test_rk45_5():
+    # https://nl.mathworks.com/help/matlab/ref/ode45.html
+    # van der Pol equation
+    def func(t: float, y: np.ndarray, mio: float):
+        dydt = np.empty(2)
+        dydt[0] = y[1]
+        dydt[1] = mio * (1 - y[0] ** 2) * y[1] - y[0]
+        return dydt
+
+    def func2(t: float, y: torch.Tensor, mio: float):
+        dydt = torch.empty(2)
+        dydt[0] = y[1]
+        dydt[1] = mio * (1 - y[0] ** 2) * y[1] - y[0]
+        return dydt
+
+    z0 = [2, 0]
+    t_span = 0, 20
+    mio = 1
+    sol = solve_ivp(fun=func, t_span=t_span, y0=torch.tensor(z0, dtype=TorchRK45.DTYPE), args=(mio,))
+    zf = torch.tensor(sol.y[:, -1], dtype=TorchRK45.DTYPE)
+    solver = TorchRK45()
+    sol2 = solver.solve_ivp(func=func2, t_span=t_span, z0=torch.tensor(z0, dtype=TorchRK45.DTYPE),
+                            args=(mio,))
+    assert_tensors(zf, sol2.zf)
+
+
+def test_rk45_6():
+    # https://nl.mathworks.com/help/matlab/ref/ode45.html
+    # Solve ODE with Multiple Initial Conditions
+    def f(t: float, y: np.ndarray | torch.Tensor):
+        if isinstance(y, np.ndarray):
+            dydt = -2 * y + 2 * np.cos(t) * np.sin(2 * t)
+        elif isinstance(y, torch.Tensor):
+            dydt = -2 * y + 2 * torch.cos(torch.tensor(t, dtype=TorchRK45.DTYPE)) * \
+                   torch.sin(torch.tensor(2 * t, dtype=TorchRK45.DTYPE))
+        else:
+            raise ValueError(f'type of y is not known')
+        return dydt
+
+    z0 = list(np.arange(-5, 6))
+    t_span = 0, 3
+    sol = solve_ivp(fun=f, t_span=t_span, y0=torch.tensor(z0, dtype=TorchRK45.DTYPE))
+    zf = torch.tensor(sol.y[:, -1], dtype=TorchRK45.DTYPE)
+    solver = TorchRK45()
+    sol2 = solver.solve_ivp(func=f, t_span=t_span, z0=torch.tensor(z0, dtype=TorchRK45.DTYPE))
+    assert_tensors(zf, sol2.zf)
+
+
+def test_rk45_7():
+    # https://nl.mathworks.com/help/matlab/ref/ode45.html#bu3l43b
+    # ODE with time dependent terms
+    """
+
+    Returns
+    -------
+
+    """
+    """"
+    ft = linspace(0,5,25);
+    f = ft.^2 - ft - 3;
+    
+    gt = linspace(1,6,25);
+    g = 3*sin(gt-0.25);
+    """
+    t_f = np.arange(0, 25 + 1, 5)
+    f = t_f ** 2 - t_f - 3
+    t_g = np.arange(0, 25 + 1, 6)
+    g = 3 * np.sin(t_g - 0.25)
+
+    def func(t, y, t_f, f, t_g, g):
+        """
+
+        Parameters
+        ----------
+        t
+        y
+        t_f
+        f
+        t_g
+        g
+
+        Returns
+        -------
+        Matlab code
+        function dydt = myode(t,y,ft,f,gt,g)
+        f = interp1(ft,f,t); % Interpolate the data set (ft,f) at time t
+        g = interp1(gt,g,t); % Interpolate the data set (gt,g) at time t
+        dydt = -f.*y + g; % Evaluate ODE at time t
+
+        """
+
+        fval = np.interp(x=t, xp=t_f, fp=f)
+        gval = np.interp(x=t, xp=t_g, fp=g)
+        dydt = -fval * y + gval
+        if isinstance(y, (np.ndarray, list)):
+            return dydt
+        elif isinstance(y, torch.Tensor):
+            return torch.tensor(dydt, dtype=TorchRK45.DTYPE)
+
+    z0 = [1]
+    t_span = 1, 5
+    sol = solve_ivp(fun=func, t_span=t_span, y0=z0, args=(t_f, f, t_g, g))
+    zf = torch.tensor(sol.y[:, -1], dtype=TorchRK45.DTYPE)
+    solver = TorchRK45()
+    sol2 = solver.solve_ivp(func=func, t_span=t_span, z0=torch.tensor(z0, dtype=TorchRK45.DTYPE),
+                            args=(t_f, f, t_g, g))
     assert_tensors(zf, sol2.zf)
