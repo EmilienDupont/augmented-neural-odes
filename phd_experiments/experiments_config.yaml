@@ -14,7 +14,7 @@ anode:
   augment_dim : 1
   non_linearity : 'relu'
 viz:
-  subdir: "experiments_2/results"
+  subdir: "phd_experiments/results"
   num_points: 10
   # timesteps: 10 : number of layers from resnet models will be used as the value for timesteps
   h_min: -1.5

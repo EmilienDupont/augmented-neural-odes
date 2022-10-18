@@ -80,7 +80,7 @@ def torch_select_initial_step(fun: callable, t0: float, y0: torch.Tensor, f0: to
     if y0.numel == 0:
         return np.inf
 
-    scale = atol + np.abs(y0) * rtol
+    scale = atol + torch.abs(y0) * rtol
     d0 = torch_rms_norm(y0 / scale)
     d1 = torch_rms_norm(f0 / scale)
     if d0 < 1e-5 or d1 < 1e-5:

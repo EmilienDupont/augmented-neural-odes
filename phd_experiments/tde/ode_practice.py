@@ -1,7 +1,7 @@
 import torch
 from scipy.integrate import solve_ivp
 
-from experiments_2.tde.tensor_ode_solvers import TensorODESolver
+from phd_experiments.tde.tensor_ode_solvers import TensorODESolver
 
 
 def exponential_decay(t, y): return -0.5 * y
