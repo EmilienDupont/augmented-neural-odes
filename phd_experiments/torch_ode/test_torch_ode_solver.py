@@ -1,4 +1,5 @@
 import logging
+from typing import List
 
 import numpy as np
 import torch
@@ -44,10 +45,9 @@ def test_torch_euler_2():
     def f(t: float, z: torch.Tensor):
         return -0.5 * z
 
-    logger = logging.get
-    z0 = torch.tensor([2, 4, 8], dtype=TorchRK45.DTYPE, device=DEVICE)
+    z0 = torch.tensor([2, 4, 8], dtype=DTYPE, device=DEVICE)
     t_span = 0, 10
-    zf = torch.tensor([0.01350781, 0.02701561, 0.05403123], dtype=TorchRK45.DTYPE, device=DEVICE)
+    zf = torch.tensor([0.01350781, 0.02701561, 0.05403123], dtype=DTYPE, device=DEVICE)
     h = 0.01
     euler_torch_ode_solver = TorchEulerSolver(step_size=h)
     sol = euler_torch_ode_solver.solve_ivp(func=f, t_span=t_span, z0=z0)
@@ -95,9 +95,9 @@ def test_torch_rk45_1():
     t_span = 0, 10
     sol_scipy = solve_ivp(fun=exponential_decay, t_span=t_span, y0=z0_vec, method='RK45')
     # get ground truth
-    zf_actual_tensor = torch.tensor([sol_scipy.y[:, -1]], device=DEVICE, dtype=TorchRK45.DTYPE)
-    z0_tensor = torch.tensor([2, 4, 8], device=DEVICE, dtype=TorchRK45.DTYPE)
-    torch_rk45_solver = TorchRK45(device=DEVICE)
+    zf_actual_tensor = torch.tensor([sol_scipy.y[:, -1]], device=DEVICE, dtype=DTYPE)
+    z0_tensor = torch.tensor([2, 4, 8], device=DEVICE, dtype=DTYPE)
+    torch_rk45_solver = TorchRK45(device=DEVICE, tensor_dtype=DTYPE)
 
     sol_torch = torch_rk45_solver.solve_ivp(func=exponential_decay, z0=z0_tensor, t_span=t_span)
     assert_tensors(sol_torch.zf, zf_actual_tensor)
@@ -123,13 +123,13 @@ def test_torch_rk45_2():
     a, b, c, d = (1.5, 1, 3, 1)
     sol = solve_ivp(fun=lotkavolterra, t_span=t_span, y0=z0_vec, args=(a, b, c, d))
     # get ground truth
-    zf_actual_tensor = torch.tensor(sol.y[:, -1], dtype=TorchRK45.DTYPE)
-    r = torch.tensor([a, -c], dtype=TorchRK45.DTYPE)
-    A = torch.tensor([[0, -b], [d, 0]], dtype=TorchRK45.DTYPE)
+    zf_actual_tensor = torch.tensor(sol.y[:, -1], dtype=DTYPE, device=DEVICE)
+    r = torch.tensor([a, -c], dtype=DTYPE, device=DEVICE)
+    A = torch.tensor([[0, -b], [d, 0]], dtype=DTYPE, device=DEVICE)
 
-    solver = TorchRK45()
+    solver = TorchRK45(device=DEVICE, tensor_dtype=DTYPE)
     sol = solver.solve_ivp(func=lotkavolterra_generalized, t_span=t_span,
-                           z0=torch.tensor(z0_vec, dtype=TorchRK45.DTYPE),
+                           z0=torch.tensor(z0_vec, dtype=DTYPE, device=DEVICE),
                            args=(r, A))
     assert_tensors(zf_actual_tensor, sol.zf)
 
@@ -146,7 +146,7 @@ def test_torch_rk45_3():
         return y_deriv
 
     def f_tensor(t: float, y: torch.Tensor, a: float, b: float) -> torch.Tensor:
-        y_deriv = torch.empty(2)
+        y_deriv = torch.empty(2, dtype=DTYPE, device=DEVICE)
         y_deriv[0] = y[1]
         y_deriv[1] = float(a) / b * t * y[0]
         return y_deriv
@@ -156,9 +156,9 @@ def test_torch_rk45_3():
     t_span = 0, 5
     z0 = [0, 0.01]
     sol = solve_ivp(fun=f_np, t_span=t_span, y0=z0, args=(a, b))
-    zf = torch.tensor(sol.y[:, -1], dtype=TorchRK45.DTYPE)
-    solver = TorchRK45()
-    sol2 = solver.solve_ivp(func=f_tensor, t_span=t_span, z0=torch.tensor(z0, dtype=TorchRK45.DTYPE), args=(a, b))
+    zf = torch.tensor(sol.y[:, -1], dtype=DTYPE, device=DEVICE)
+    solver = TorchRK45(device=DEVICE, tensor_dtype=DTYPE)
+    sol2 = solver.solve_ivp(func=f_tensor, t_span=t_span, z0=torch.tensor(z0, dtype=DTYPE, device=DEVICE), args=(a, b))
     assert_tensors(zf, sol2.zf)
 
 
@@ -169,15 +169,15 @@ def test_rk45_4():
         return 2 * t
 
     def func2(t: float, y: torch.Tensor):
-        return torch.tensor(2 * t, dtype=TorchRK45.DTYPE)
+        return torch.tensor(2 * t, dtype=DTYPE, device=DEVICE)
 
     # get ground truth
     z0 = [0]
     t_span = 0, 5
     sol = solve_ivp(fun=func, t_span=t_span, y0=z0)
-    zf = torch.tensor(sol.y[:, -1], dtype=TorchRK45.DTYPE)
-    solver = TorchRK45()
-    sol2 = solver.solve_ivp(func=func2, t_span=t_span, z0=torch.tensor(z0, dtype=TorchRK45.DTYPE))
+    zf = torch.tensor(sol.y[:, -1], dtype=DTYPE, device=DEVICE)
+    solver = TorchRK45(device=DEVICE, tensor_dtype=DTYPE)
+    sol2 = solver.solve_ivp(func=func2, t_span=t_span, z0=torch.tensor(z0, dtype=DTYPE, device=DEVICE))
     assert_tensors(zf, sol2.zf)
 
 
@@ -191,7 +191,7 @@ def test_rk45_5():
         return dydt
 
     def func2(t: float, y: torch.Tensor, mio: float):
-        dydt = torch.empty(2)
+        dydt = torch.empty(2, device=DEVICE, dtype=DTYPE)
         dydt[0] = y[1]
         dydt[1] = mio * (1 - y[0] ** 2) * y[1] - y[0]
         return dydt
@@ -199,10 +199,10 @@ def test_rk45_5():
     z0 = [2, 0]
     t_span = 0, 20
     mio = 1
-    sol = solve_ivp(fun=func, t_span=t_span, y0=torch.tensor(z0, dtype=TorchRK45.DTYPE), args=(mio,))
-    zf = torch.tensor(sol.y[:, -1], dtype=TorchRK45.DTYPE)
-    solver = TorchRK45()
-    sol2 = solver.solve_ivp(func=func2, t_span=t_span, z0=torch.tensor(z0, dtype=TorchRK45.DTYPE),
+    sol = solve_ivp(fun=func, t_span=t_span, y0=z0, args=(mio,))
+    zf = torch.tensor(sol.y[:, -1], dtype=DTYPE, device=DEVICE)
+    solver = TorchRK45(device=DEVICE,tensor_dtype=DTYPE)
+    sol2 = solver.solve_ivp(func=func2, t_span=t_span, z0=torch.tensor(z0, dtype=DTYPE, device=DEVICE),
                             args=(mio,))
     assert_tensors(zf, sol2.zf)
 
@@ -210,22 +210,22 @@ def test_rk45_5():
 def test_rk45_6():
     # https://nl.mathworks.com/help/matlab/ref/ode45.html
     # Solve ODE with Multiple Initial Conditions
-    def f(t: float, y: np.ndarray | torch.Tensor):
-        if isinstance(y, np.ndarray):
+    def f(t: float | torch.Tensor, y: np.ndarray | List | torch.Tensor):
+        if isinstance(y, (np.ndarray, list)) and isinstance(t, float):
             dydt = -2 * y + 2 * np.cos(t) * np.sin(2 * t)
         elif isinstance(y, torch.Tensor):
-            dydt = -2 * y + 2 * torch.cos(torch.tensor(t, dtype=TorchRK45.DTYPE)) * \
-                   torch.sin(torch.tensor(2 * t, dtype=TorchRK45.DTYPE))
+            dydt = -2 * y + 2 * torch.cos(torch.tensor(t, dtype=DTYPE, device=DEVICE)) * \
+                   torch.sin(torch.tensor(2 * t, dtype=DTYPE, device=DEVICE))
         else:
             raise ValueError(f'type of y is not known')
         return dydt
 
     z0 = list(np.arange(-5, 6))
     t_span = 0, 3
-    sol = solve_ivp(fun=f, t_span=t_span, y0=torch.tensor(z0, dtype=TorchRK45.DTYPE))
-    zf = torch.tensor(sol.y[:, -1], dtype=TorchRK45.DTYPE)
-    solver = TorchRK45()
-    sol2 = solver.solve_ivp(func=f, t_span=t_span, z0=torch.tensor(z0, dtype=TorchRK45.DTYPE))
+    sol = solve_ivp(fun=f, t_span=t_span, y0=z0)
+    zf = torch.tensor(sol.y[:, -1], dtype=DTYPE, device=DEVICE)
+    solver = TorchRK45(device=DEVICE, tensor_dtype=DTYPE)
+    sol2 = solver.solve_ivp(func=f, t_span=t_span, z0=torch.tensor(z0, dtype=DTYPE, device=DEVICE))
     assert_tensors(zf, sol2.zf)
 
 
@@ -284,7 +284,7 @@ def test_rk45_7():
     z0 = [1]
     t_span = 1, 5
     sol = solve_ivp(fun=func, t_span=t_span, y0=z0, args=(t_f, f, t_g, g))
-    zf = torch.tensor(sol.y[:, -1], dtype=DTYPE,device=DEVICE)
+    zf = torch.tensor(sol.y[:, -1], dtype=DTYPE, device=DEVICE)
     solver = TorchRK45(device=DEVICE, tensor_dtype=DTYPE)
     sol2 = solver.solve_ivp(func=func, t_span=t_span, z0=torch.tensor(z0, dtype=DTYPE, device=DEVICE),
                             args=(t_f, f, t_g, g))
