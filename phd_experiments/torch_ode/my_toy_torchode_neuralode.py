@@ -1,0 +1,129 @@
+"""
+The purpose of this exercise is build a toy neural-ode from scratch using my torch-ode library
+Objectives
+1- get hand-on neural-ode on a toy problem with toy implementation
+2- test my torch-ode rk45 implementation with toy neural-ode
+
+NeurODE Toy Demo
+https://github.com/rtqichen/torchdiffeq/blob/master/examples/ode_demo.py
+http://web.math.ucsb.edu/~ebrahim/lin_ode_sys.pdf
+"""
+import logging
+from typing import Callable, Tuple
+
+import torch
+from scipy.integrate import solve_ivp
+import numpy as np
+import pandas as pd
+from tqdm import tqdm
+import torch.nn as nn
+import torch.optim as optim
+
+from experiments_2.torch_ode.torch_rk45 import TorchRK45
+from torch.utils.data import TensorDataset, DataLoader
+
+SEED = 123456789
+np.random.seed(SEED)
+DTYPE = TorchRK45.DTYPE
+
+
+class ToyODEData():
+    def __init__(self, ulow: float, uhigh: float, f: Callable, t_span: Tuple, args: Tuple = None):
+        self.ulow = ulow
+        self.uhigh = uhigh
+        self.f = f
+        self.t_spane = t_span
+        self.args = args
+
+    def generate(self, N, batch_size, fractions, shuffle=True):
+        X = np.random.uniform(low=self.ulow, high=self.uhigh, size=(N, 2))
+        tqdm.pandas(desc='Generate ODE toy data')
+        Y = pd.DataFrame(data=X).progress_apply(
+            lambda x: solve_ivp(fun=f, t_span=t_span, y0=x, args=self.args).y[:, -1], axis=1).values
+        Y = np.stack(Y, axis=0)
+        data_set_ = TensorDataset(torch.tensor(X, dtype=DTYPE), torch.tensor(Y, dtype=DTYPE))
+        lengths = list(map(lambda x: int(np.round(x * N)), fractions))
+        train_set, test_set, val_set = torch.utils.data.random_split(dataset=data_set_, lengths=lengths)
+        return DataLoader(dataset=train_set, batch_size=batch_size, shuffle=True), \
+               DataLoader(dataset=test_set, batch_size=batch_size, shuffle=True), \
+               DataLoader(dataset=val_set, batch_size=batch_size, shuffle=True)
+
+
+class ODEFunc(nn.Module):
+    # copy from
+    def __init__(self):
+        super(ODEFunc, self).__init__()
+
+        self.net = nn.Sequential(
+            nn.Linear(2, 50, dtype=DTYPE),
+            nn.Tanh(),
+            nn.Linear(50, 2, dtype=DTYPE),
+        )
+
+        for m in self.net.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, mean=0, std=0.1)
+                nn.init.constant_(m.bias, val=0)
+
+    def forward(self, t, y):
+        y_pred = self.net(y)  # can be played with !
+        return y_pred
+
+
+def f(t: float, y: np.ndarray, a: float):
+    yprime = np.empty(2)
+    yprime[0] = a * y[0]
+    yprime[1] = -y[1]
+    return yprime
+
+
+def train(train_loader: DataLoader, num_epochs: int, ode_func_model: nn.Module, print_freq=10,
+          dry_run=False):
+    num_epochs = 1 if dry_run else num_epochs
+    optimizer = optim.Adam(ode_func_model.parameters(), lr=1e-3)
+    torch_rk45_solver = TorchRK45()
+    loss = torch.Tensor([float('inf')])
+    for epoch in tqdm(range(num_epochs), desc='epochs'):
+        for batch_idx, (X, Y) in enumerate(train_loader):
+            optimizer.zero_grad()
+            Y_pred = torch_rk45_solver.solve_ivp(func=ode_func_model, t_span=t_span, z0=X).zf
+            loss = torch.mean(torch.abs(Y_pred - Y))
+            loss.backward()
+            optimizer.step()
+        if epoch % print_freq == 0:
+            logger.info(f'epoch : {epoch} & batch : {epoch} = {loss.item()}')
+
+    return ode_func_model
+
+
+if __name__ == '__main__':
+    # TODO
+    """
+    i) enable cuda 
+    ii) test on toy dataset and look at predictions ( are they OK ) - print y_pred vs y_actual stats
+    compute train stats 1) loss convergence 2) NFE calculations, curves 3) 
+    """
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger()
+    dry_run = False
+    train_flag = True
+    test_flag = True
+
+    # generate toy dataset
+    t_span = 0, 1
+    a = 1
+    num_batches = 300
+    batch_size_ = 128
+    data_gen = ToyODEData(ulow=-10, uhigh=10, f=f, t_span=t_span, args=(a,))
+    train_loader_, test_loader, val_loader = data_gen.generate(N=num_batches * batch_size_, batch_size=batch_size_,
+                                                               fractions=[0.7, 0.2, 0.1])
+    # train
+
+    if train_flag:
+        ode_func_model_init = ODEFunc()
+        # training
+        n_epochs = 1000
+        freq = 10
+        ode_func_model_trained = train(train_loader=train_loader_, num_epochs=n_epochs,
+                                       ode_func_model=ode_func_model_init, print_freq=freq, dry_run=dry_run)
+        torch.save(obj=ode_func_model_trained.state_dict(), f="toy_neural_ode.model")
