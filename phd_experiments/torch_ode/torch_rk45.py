@@ -68,7 +68,7 @@ class TorchRK45(TorchODESolver):
         z_trajectory = [z0]
         t_values = [t0]
         K_sizes = [TorchRK45.N_STAGES + 1]
-        K_sizes.extend(list(z0.size()))
+        K_sizes.extend(list(z0.size())[::-1])
         self.K = torch.empty(K_sizes, dtype=self.tensor_dtype, device=self.device)
 
         f0 = func(t0, z0)
@@ -95,13 +95,13 @@ class TorchRK45(TorchODESolver):
         torch.Tensor, torch.Tensor]:
         # based on scipy integrate rk_step method
         # https://github.com/scipy/scipy/blob/v1.9.2/scipy/integrate/_ivp/rk.py#L14
-        K[0] = f
+        K[0] = f.T
         for s, (a, c) in enumerate(zip(A[1:], C[1:]), start=1):
             dz = torch.matmul(K[:s].T, a[:s]) * h
-            K[s] = func(t + c * h, z + dz)
+            K[s] = func(t + c * h, z + dz).T
         z_new = z + h * torch.matmul(K[:-1].T, B)
         f_new = func(t + h, z_new)
-        K[-1] = f_new
+        K[-1] = f_new.T
         return z_new, f_new
 
     @staticmethod

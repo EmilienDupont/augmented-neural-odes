@@ -7,7 +7,19 @@ Objectives
 NeurODE Toy Demo
 https://github.com/rtqichen/torchdiffeq/blob/master/examples/ode_demo.py
 http://web.math.ucsb.edu/~ebrahim/lin_ode_sys.pdf
+
+Refs
+---------------
+i) PyTorch + Cuda
+https://cnvrg.io/pytorch-cuda/
+
+ii) gpustat -cp tp get GPU usage%
+pip install gpustat
+
+You can query it every couple of seconds (or minutes) in the middle of the training job
+https://stackoverflow.com/a/51406093
 """
+
 import logging
 from typing import Callable, Tuple
 
@@ -19,29 +31,52 @@ from tqdm import tqdm
 import torch.nn as nn
 import torch.optim as optim
 
-from experiments_2.torch_ode.torch_rk45 import TorchRK45
 from torch.utils.data import TensorDataset, DataLoader
 
+from phd_experiments.torch_ode.torch_ode_utils import get_device_info
+from phd_experiments.torch_ode.torch_rk45 import TorchRK45
+
+#########################
+# Global variables and settings
+# FIXME make it better !
+#########################
+DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+TENSOR_DTYPE = torch.float32
 SEED = 123456789
 np.random.seed(SEED)
-DTYPE = TorchRK45.DTYPE
+
+
+##########################
+
+
+# Data Generation methods and classes
+def f_true_dynamics(t: float, y: np.ndarray, a: float):
+    yprime = np.empty(2)
+    yprime[0] = a * y[0]
+    yprime[1] = -y[1]
+    return yprime
 
 
 class ToyODEData():
-    def __init__(self, ulow: float, uhigh: float, f: Callable, t_span: Tuple, args: Tuple = None):
+    def __init__(self, device: torch.device, tensor_dtype: torch.dtype, ulow: float, uhigh: float, f: Callable,
+                 t_span: Tuple, args: Tuple = None):
+        self.device = device
+        self.tensor_dtype = tensor_dtype
         self.ulow = ulow
         self.uhigh = uhigh
         self.f = f
         self.t_spane = t_span
         self.args = args
 
-    def generate(self, N, batch_size, fractions, shuffle=True):
+    def generate(self, N, batch_size, fractions):
         X = np.random.uniform(low=self.ulow, high=self.uhigh, size=(N, 2))
         tqdm.pandas(desc='Generate ODE toy data')
         Y = pd.DataFrame(data=X).progress_apply(
-            lambda x: solve_ivp(fun=f, t_span=t_span, y0=x, args=self.args).y[:, -1], axis=1).values
+            lambda x: solve_ivp(fun=self.f, t_span=t_span, y0=x, args=self.args).y[:, -1],
+            axis=1).values
         Y = np.stack(Y, axis=0)
-        data_set_ = TensorDataset(torch.tensor(X, dtype=DTYPE), torch.tensor(Y, dtype=DTYPE))
+        data_set_ = TensorDataset(torch.tensor(X, device=self.device, dtype=self.tensor_dtype),
+                                  torch.tensor(Y, device=self.device, dtype=self.tensor_dtype))
         lengths = list(map(lambda x: int(np.round(x * N)), fractions))
         train_set, test_set, val_set = torch.utils.data.random_split(dataset=data_set_, lengths=lengths)
         return DataLoader(dataset=train_set, batch_size=batch_size, shuffle=True), \
@@ -49,17 +84,20 @@ class ToyODEData():
                DataLoader(dataset=val_set, batch_size=batch_size, shuffle=True)
 
 
+# Learnable derivative function (Learnable Dynamics)
 class ODEFunc(nn.Module):
     # copy from
-    def __init__(self):
+    def __init__(self, device: torch.device, tensor_dtype: torch.dtype):
         super(ODEFunc, self).__init__()
-
+        self.device = device
+        self.tensor_dtype = tensor_dtype
         self.net = nn.Sequential(
-            nn.Linear(2, 50, dtype=DTYPE),
+            nn.Linear(2, 50, device=self.device, dtype=self.tensor_dtype),
             nn.Tanh(),
-            nn.Linear(50, 2, dtype=DTYPE),
+            nn.Linear(50, 2, device=self.device, dtype=tensor_dtype),
         )
-
+        self.net.cuda()
+        assert next(self.net.parameters()).is_cuda, "Model is not on Cuda"
         for m in self.net.modules():
             if isinstance(m, nn.Linear):
                 nn.init.normal_(m.weight, mean=0, std=0.1)
@@ -70,28 +108,24 @@ class ODEFunc(nn.Module):
         return y_pred
 
 
-def f(t: float, y: np.ndarray, a: float):
-    yprime = np.empty(2)
-    yprime[0] = a * y[0]
-    yprime[1] = -y[1]
-    return yprime
-
-
+# Learn dynamics
 def train(train_loader: DataLoader, num_epochs: int, ode_func_model: nn.Module, print_freq=10,
           dry_run=False):
     num_epochs = 1 if dry_run else num_epochs
     optimizer = optim.Adam(ode_func_model.parameters(), lr=1e-3)
-    torch_rk45_solver = TorchRK45()
+    torch_rk45_solver = TorchRK45(device=DEVICE, tensor_dtype=TENSOR_DTYPE)
     loss = torch.Tensor([float('inf')])
     for epoch in tqdm(range(num_epochs), desc='epochs'):
         for batch_idx, (X, Y) in enumerate(train_loader):
+            assert X.is_cuda, " X batch is not on cuda"
+            assert Y.is_cuda, " Y batch is not on cuda"
             optimizer.zero_grad()
             Y_pred = torch_rk45_solver.solve_ivp(func=ode_func_model, t_span=t_span, z0=X).zf
             loss = torch.mean(torch.abs(Y_pred - Y))
             loss.backward()
             optimizer.step()
         if epoch % print_freq == 0:
-            logger.info(f'epoch : {epoch} & batch : {epoch} = {loss.item()}')
+            logger.info(f'epoch : {epoch} loss = {loss.item()}')
 
     return ode_func_model
 
@@ -105,6 +139,10 @@ if __name__ == '__main__':
     """
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger()
+    # get running env info w.r.t devices
+    devices_info = get_device_info()
+    logger.info(f'Device info: \n {devices_info}')
+    # set run levers
     dry_run = False
     train_flag = True
     test_flag = True
@@ -114,16 +152,19 @@ if __name__ == '__main__':
     a = 1
     num_batches = 300
     batch_size_ = 128
-    data_gen = ToyODEData(ulow=-10, uhigh=10, f=f, t_span=t_span, args=(a,))
+    data_gen = ToyODEData(device=DEVICE, tensor_dtype=TENSOR_DTYPE, ulow=-10, uhigh=10, f=f_true_dynamics,
+                          t_span=t_span, args=(a,))
     train_loader_, test_loader, val_loader = data_gen.generate(N=num_batches * batch_size_, batch_size=batch_size_,
                                                                fractions=[0.7, 0.2, 0.1])
     # train
 
     if train_flag:
-        ode_func_model_init = ODEFunc()
+        ode_func_model_init = ODEFunc(device=DEVICE, tensor_dtype=TENSOR_DTYPE)
         # training
-        n_epochs = 1000
-        freq = 10
+        n_epochs = 100
+        epochs_print_freq = int(n_epochs / 10)
         ode_func_model_trained = train(train_loader=train_loader_, num_epochs=n_epochs,
-                                       ode_func_model=ode_func_model_init, print_freq=freq, dry_run=dry_run)
+                                       ode_func_model=ode_func_model_init, print_freq=epochs_print_freq,
+                                       dry_run=dry_run)
+
         torch.save(obj=ode_func_model_trained.state_dict(), f="toy_neural_ode.model")
