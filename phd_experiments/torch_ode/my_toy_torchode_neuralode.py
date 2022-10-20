@@ -23,9 +23,10 @@ iii) Accelerate Training
 https://www.reddit.com/r/MachineLearning/comments/kvs1ex/d_here_are_17_ways_of_making_pytorch_training/
 """
 import datetime
+import json
 import logging
-from typing import Callable, Tuple
-
+from typing import Callable, Tuple, Type
+from dill.source import getsource
 import torch
 from scipy.integrate import solve_ivp
 import numpy as np
@@ -44,8 +45,7 @@ from phd_experiments.torch_ode.torch_rk45 import TorchRK45
 # Global variables and settings
 # FIXME make it better !
 #########################
-DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-TENSOR_DTYPE = torch.float32
+
 SEED = 123456789
 np.random.seed(SEED)
 
@@ -54,7 +54,8 @@ np.random.seed(SEED)
 
 
 # Data Generation methods and classes
-def f_true_dynamics(t: float, y: np.ndarray, a: float):
+def f_simple_linear_uncoupled_ode_1(t: float, y: np.ndarray, a: float):
+    # http://web.math.ucsb.edu/~ebrahim/lin_ode_sys.pdf eqn (1)
     yprime = np.empty(2)
     yprime[0] = a * y[0]
     yprime[1] = -y[1]
@@ -72,7 +73,7 @@ class ToyODEData():
         self.t_span = t_span
         self.args = args
 
-    def generate(self, N, batch_size, fractions):
+    def generate(self, N, batch_size, splits):
         X = np.random.uniform(low=self.ulow, high=self.uhigh, size=(N, 2))
         tqdm.pandas(desc='Generate ODE toy data')
         Y = pd.DataFrame(data=X).progress_apply(
@@ -81,7 +82,7 @@ class ToyODEData():
         Y = np.stack(Y, axis=0)
         data_set_ = TensorDataset(torch.tensor(X, device=self.device, dtype=self.tensor_dtype),
                                   torch.tensor(Y, device=self.device, dtype=self.tensor_dtype))
-        lengths = list(map(lambda x: int(np.round(x * N)), fractions))
+        lengths = list(map(lambda x: int(np.round(x * N)), splits))
         train_set, test_set, val_set = torch.utils.data.random_split(dataset=data_set_, lengths=lengths)
         return DataLoader(dataset=train_set, batch_size=batch_size, shuffle=True), \
                DataLoader(dataset=test_set, batch_size=batch_size, shuffle=True), \
@@ -113,31 +114,56 @@ class ODEFunc(nn.Module):
 
 
 # Learn dynamics
-def train(train_loader: DataLoader, num_epochs: int, ode_func_model: nn.Module, t_span: Tuple, train_loss_fn,
-          print_freq=10,
-          dry_run=False):
+def train(solver: TorchODESolver, ode_func_model: nn.Module, train_loader: DataLoader, num_epochs: int, t_span: Tuple,
+          train_loss_fn: Callable, lr: float, print_freq=10, dry_run=False):
     logger = logging.getLogger()
     num_epochs = 1 if dry_run else num_epochs
-    optimizer = optim.Adam(ode_func_model.parameters(), lr=1e-3)
-    torch_rk45_solver = TorchRK45(device=DEVICE, tensor_dtype=TENSOR_DTYPE)
+    optimizer = optim.Adam(ode_func_model.parameters(), lr=lr)
     loss = torch.Tensor([float('inf')])
     for epoch in tqdm(range(num_epochs), desc='epochs'):
         for batch_idx, (X, Y) in enumerate(train_loader):
             assert X.is_cuda, " X batch is not on cuda"
             assert Y.is_cuda, " Y batch is not on cuda"
             optimizer.zero_grad()
-            Y_pred = torch_rk45_solver.solve_ivp(func=ode_func_model, t_span=t_span, z0=X).zf
+            Y_pred = solver.solve_ivp(func=ode_func_model, t_span=t_span, z0=X).zf
             loss = train_loss_fn(Y_pred, Y)
             loss.backward()
             optimizer.step()
         if epoch % print_freq == 0:
             logger.info(f'epoch : {epoch} loss = {loss.item()}')
 
-    return ode_func_model, loss
+    return ode_func_model, loss.item()
 
 
-def evaluate(odefunc: nn.Module, solver: TorchODESolver, test_set: DataLoader, metric):
-    pass
+def evaluate(solver: TorchODESolver, ode_func_model: nn.Module, t_span: Tuple, test_set: DataLoader,
+             test_loss_fn: Callable):
+    batches_losses = []
+    for i, (X, Y) in enumerate(test_set):
+        Y_pred = solver.solve_ivp(func=ode_func_model, t_span=t_span, z0=X).zf
+        loss = test_loss_fn(Y_pred, Y)
+        batches_losses.append(loss.item())
+    return np.mean(batches_losses)
+
+
+def log_experiment_info(experiment_log_filepath: str, solver: TorchODESolver, f_true_dynamic: Callable,
+                        training_time_fmt: str, ode_func: Type[nn.Module], torch_config: dict,
+                        data_config: dict, train_config: dict, train_loss: float, test_loss: float):
+    payload = dict()
+    with open(experiment_log_filepath, 'w') as f:
+        # results
+        payload['train_loss'] = train_loss
+        payload['test_loss'] = test_loss
+        payload['training_time_fmt'] = training_time_fmt
+        # params and configs
+        payload['solver'] = str(type(solver))
+        payload['f_true_dynamics'] = str(getsource(f_true_dynamic))
+        payload['ode_func'] = str(getsource(ode_func))
+        payload['torch_config'] = str(torch_config)
+        payload['data_config'] = str(data_config)
+        payload['train_config'] = str(train_config)
+        json.dump(obj=payload, fp=f)
+        f.flush()
+        f.close()
 
 
 if __name__ == '__main__':
@@ -156,33 +182,49 @@ if __name__ == '__main__':
     dry_run = False
     train_flag = True
     test_flag = True
+    # Torch config
 
+    torch_configs = {'device': torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu'),
+                     'TENSOR_DTYPE': torch.float32}
     # generate toy dataset
-    t_span = 0, 1
-    a = 1
-    num_batches = 300
-    batch_size_ = 128
-    data_gen = ToyODEData(device=DEVICE, tensor_dtype=TENSOR_DTYPE, ulow=-10, uhigh=10, f=f_true_dynamics,
-                          t_span=t_span, args=(a,))
-    train_loader_, test_loader, val_loader = data_gen.generate(N=num_batches * batch_size_, batch_size=batch_size_,
-                                                               fractions=[0.7, 0.2, 0.1])
+    data_set_config = {'t_span': (0, 1), 'f_params': {'a': 1}, 'num_batches': 1000, 'batch_size': 32,
+                       'splits': [0.7, 0.2, 0.1], 'f_true_dynamics': f_simple_linear_uncoupled_ode_1}
+
+    data_gen = ToyODEData(device=torch_configs['device'], tensor_dtype=torch_configs['TENSOR_DTYPE'], ulow=-10,
+                          uhigh=10,
+                          f=f_simple_linear_uncoupled_ode_1, t_span=data_set_config['t_span'],
+                          args=(data_set_config['f_params']['a'],))
+    train_loader_, test_loader, val_loader = data_gen.generate(
+        N=data_set_config['num_batches'] * data_set_config['batch_size'], batch_size=data_set_config['batch_size'],
+        splits=data_set_config['splits'])
     # train
+    train_params = {'n_epochs': 100, 'batch_size': data_set_config['batch_size'], 'lr': 1e-3,
+                    't_span': data_set_config['t_span']}
     if train_flag:
         # setup training stuff
-        ode_func_model_init = ODEFunc(device=DEVICE, tensor_dtype=TENSOR_DTYPE)
-
-        n_epochs = 100
-        epochs_print_freq = int(n_epochs / 10)
-        train_loss_fn = torch.nn.SmoothL1Loss()
-
+        ode_func_model_init = ODEFunc(device=torch_configs['device'], tensor_dtype=torch_configs['TENSOR_DTYPE'])
+        epochs_print_freq = int(train_params['n_epochs'] / 10)
+        loss_fn = torch.nn.SmoothL1Loss()
+        solver = TorchRK45(device=torch_configs['device'], tensor_dtype=torch_configs['TENSOR_DTYPE'])
         # start training
         start_time = datetime.datetime.now()
-        ode_func_model_trained, loss = train(train_loader=train_loader_, num_epochs=n_epochs,
-                                             ode_func_model=ode_func_model_init, print_freq=epochs_print_freq,
-                                             dry_run=dry_run, t_span=t_span, train_loss_fn=train_loss_fn)
+        ode_func_model_fitted, train_loss = train(solver=solver, train_loader=train_loader_,
+                                                  num_epochs=train_params['n_epochs'],
+                                                  ode_func_model=ode_func_model_init, print_freq=epochs_print_freq,
+                                                  dry_run=dry_run, t_span=train_params['t_span'], train_loss_fn=loss_fn,
+                                                  lr=train_params['lr'])
         end_time = datetime.datetime.now()
 
         t_delta_fmt = format_timedelta(time_delta=end_time - start_time)
+
+        mean_eval_loss = evaluate(solver=solver, ode_func_model=ode_func_model_fitted, t_span=train_params['t_span'],
+                                  test_set=test_loader,
+                                  test_loss_fn=loss_fn)
         logger.info(f'Training finished in : {t_delta_fmt}')
-        logger.info(f'Final loss = {loss.item()}')
-        torch.save(obj=ode_func_model_trained.state_dict(), f="toy_neural_ode.model")
+        logger.info(f' Train loss = {train_loss}')
+        logger.info(f' Test loss = {mean_eval_loss}')
+        torch.save(obj=ode_func_model_fitted.state_dict(), f="toy_neural_ode.model")
+        log_experiment_info(experiment_log_filepath=f"../experiments/logs/experiment_{datetime.datetime.now()}.json",
+                            solver=solver, f_true_dynamic=data_set_config['f_true_dynamics'], ode_func=ODEFunc,
+                            training_time_fmt=t_delta_fmt, torch_config=torch_configs, data_config=data_set_config,
+                            train_config=train_params, train_loss=train_loss, test_loss=float(mean_eval_loss))
