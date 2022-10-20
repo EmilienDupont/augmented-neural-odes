@@ -23,6 +23,8 @@ class TorchODESolver(ABC):
     def __init__(self, step_size: [float, str] = 0.01):
         self.step_size = step_size
         self.logger = logging.getLogger()
+        self.nfe = 0 # Number of Function Evaluations
+
 
     @abstractmethod
     def solve_ivp(self, func: Callable[[float, torch.Tensor, ...], torch.Tensor], t_span: Tuple,
