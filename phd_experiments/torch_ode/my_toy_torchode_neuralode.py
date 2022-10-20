@@ -18,8 +18,11 @@ pip install gpustat
 
 You can query it every couple of seconds (or minutes) in the middle of the training job
 https://stackoverflow.com/a/51406093
-"""
 
+iii) Accelerate Training
+https://www.reddit.com/r/MachineLearning/comments/kvs1ex/d_here_are_17_ways_of_making_pytorch_training/
+"""
+import datetime
 import logging
 from typing import Callable, Tuple
 
@@ -33,7 +36,8 @@ import torch.optim as optim
 
 from torch.utils.data import TensorDataset, DataLoader
 
-from phd_experiments.torch_ode.torch_ode_utils import get_device_info
+from phd_experiments.torch_ode.torch_ode_solver import TorchODESolver
+from phd_experiments.torch_ode.torch_ode_utils import get_device_info, format_timedelta
 from phd_experiments.torch_ode.torch_rk45 import TorchRK45
 
 #########################
@@ -65,14 +69,14 @@ class ToyODEData():
         self.ulow = ulow
         self.uhigh = uhigh
         self.f = f
-        self.t_spane = t_span
+        self.t_span = t_span
         self.args = args
 
     def generate(self, N, batch_size, fractions):
         X = np.random.uniform(low=self.ulow, high=self.uhigh, size=(N, 2))
         tqdm.pandas(desc='Generate ODE toy data')
         Y = pd.DataFrame(data=X).progress_apply(
-            lambda x: solve_ivp(fun=self.f, t_span=t_span, y0=x, args=self.args).y[:, -1],
+            lambda x: solve_ivp(fun=self.f, t_span=self.t_span, y0=x, args=self.args).y[:, -1],
             axis=1).values
         Y = np.stack(Y, axis=0)
         data_set_ = TensorDataset(torch.tensor(X, device=self.device, dtype=self.tensor_dtype),
@@ -109,8 +113,10 @@ class ODEFunc(nn.Module):
 
 
 # Learn dynamics
-def train(train_loader: DataLoader, num_epochs: int, ode_func_model: nn.Module, print_freq=10,
+def train(train_loader: DataLoader, num_epochs: int, ode_func_model: nn.Module, t_span: Tuple, train_loss_fn,
+          print_freq=10,
           dry_run=False):
+    logger = logging.getLogger()
     num_epochs = 1 if dry_run else num_epochs
     optimizer = optim.Adam(ode_func_model.parameters(), lr=1e-3)
     torch_rk45_solver = TorchRK45(device=DEVICE, tensor_dtype=TENSOR_DTYPE)
@@ -121,13 +127,17 @@ def train(train_loader: DataLoader, num_epochs: int, ode_func_model: nn.Module, 
             assert Y.is_cuda, " Y batch is not on cuda"
             optimizer.zero_grad()
             Y_pred = torch_rk45_solver.solve_ivp(func=ode_func_model, t_span=t_span, z0=X).zf
-            loss = torch.mean(torch.abs(Y_pred - Y))
+            loss = train_loss_fn(Y_pred, Y)
             loss.backward()
             optimizer.step()
         if epoch % print_freq == 0:
             logger.info(f'epoch : {epoch} loss = {loss.item()}')
 
-    return ode_func_model
+    return ode_func_model, loss
+
+
+def evaluate(odefunc: nn.Module, solver: TorchODESolver, test_set: DataLoader, metric):
+    pass
 
 
 if __name__ == '__main__':
@@ -157,14 +167,22 @@ if __name__ == '__main__':
     train_loader_, test_loader, val_loader = data_gen.generate(N=num_batches * batch_size_, batch_size=batch_size_,
                                                                fractions=[0.7, 0.2, 0.1])
     # train
-
     if train_flag:
+        # setup training stuff
         ode_func_model_init = ODEFunc(device=DEVICE, tensor_dtype=TENSOR_DTYPE)
-        # training
+
         n_epochs = 100
         epochs_print_freq = int(n_epochs / 10)
-        ode_func_model_trained = train(train_loader=train_loader_, num_epochs=n_epochs,
-                                       ode_func_model=ode_func_model_init, print_freq=epochs_print_freq,
-                                       dry_run=dry_run)
+        train_loss_fn = torch.nn.SmoothL1Loss()
 
+        # start training
+        start_time = datetime.datetime.now()
+        ode_func_model_trained, loss = train(train_loader=train_loader_, num_epochs=n_epochs,
+                                             ode_func_model=ode_func_model_init, print_freq=epochs_print_freq,
+                                             dry_run=dry_run, t_span=t_span, train_loss_fn=train_loss_fn)
+        end_time = datetime.datetime.now()
+
+        t_delta_fmt = format_timedelta(time_delta=end_time - start_time)
+        logger.info(f'Training finished in : {t_delta_fmt}')
+        logger.info(f'Final loss = {loss.item()}')
         torch.save(obj=ode_func_model_trained.state_dict(), f="toy_neural_ode.model")
