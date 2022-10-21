@@ -8,7 +8,7 @@ from experiments.dataloaders import ConcentricSphere
 from torch.utils.data import DataLoader
 
 from phd_experiments.tde.tde_model import TensorDiffEq
-from phd_experiments.tde.tde_training import TensorDiffEqTrainer
+from phd_experiments.tde.tde_training_old_to_delete import TensorDiffEqTrainer
 from viz.plots import single_feature_plt, get_feature_history, multi_feature_plt, input_space_plt, iteration_plt
 from viz.plots import trajectory_plt
 
