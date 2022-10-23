@@ -24,11 +24,9 @@ https://www.reddit.com/r/MachineLearning/comments/kvs1ex/d_here_are_17_ways_of_m
 """
 import argparse
 import datetime
-import json
 import logging
 import os.path
-from typing import Callable, Tuple, Type
-from dill.source import getsource
+from typing import Callable, Tuple
 import torch
 from scipy.integrate import solve_ivp
 import numpy as np
@@ -36,9 +34,7 @@ import pandas as pd
 from tqdm import tqdm
 import torch.nn as nn
 import torch.optim as optim
-
 from torch.utils.data import TensorDataset, DataLoader
-
 from phd_experiments.torch_ode.torch_ode_solver import TorchODESolver
 from phd_experiments.torch_ode.torch_ode_utils import get_device_info, format_timedelta, log_train_experiment
 from phd_experiments.torch_ode.torch_rk45 import TorchRK45
@@ -143,8 +139,8 @@ class TorchODETrainer:
         self.train_nfe = 0
         self.train_solve_call_count = 0
 
-    def dump_model(self, model_path: str):
-        pass
+    def save_model(self, model_path: str):
+        torch.save(obj=self.ode_func_model.state_dict(), f=model_path)
 
 
 class ODEFunc(nn.Module):
@@ -196,7 +192,9 @@ def evaluate(solver: TorchODESolver, ode_func_model: nn.Module, t_span: Tuple, t
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dryrun', dest='dryrun', action='store_true')
-    parser.add_argument('--logdir', type=str, required=True)
+    parser.add_argument('--log-dir', type=str, required=True)
+    parser.add_argument('--model-dir', type=str, required=True)
+    parser.add_argument('--model-prefix', type=str, required=False, default='neural_model')
     return parser
 
 
@@ -209,6 +207,7 @@ if __name__ == '__main__':
     """
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger()
+    experiment_timestamp = datetime.datetime.now().isoformat()
     # argparse
     parser_ = get_parser()
     args = parser_.parse_args()
@@ -253,8 +252,9 @@ if __name__ == '__main__':
     end_time = datetime.datetime.now()
     # log results
     t_delta_fmt = format_timedelta(time_delta=end_time - start_time)
+    torch_trainer.save_model(model_path=os.path.join(args.model_dir, f'{args.model_prefix}_{experiment_timestamp}.model'))
     log_train_experiment(
-        experiment_log_filepath=os.path.join(args.logdir, f"train_experiment_{datetime.datetime.now()}.json"),
+        experiment_log_filepath=os.path.join(args.log_dir, f"train_experiment_{experiment_timestamp}.json"),
         run_type="train", solver=torch_solver_, f_true_dynamic=dataset_config['f_true_dynamics'],
         ode_func=ODEFunc, training_time_fmt=t_delta_fmt, torch_config=torch_configs, data_config=dataset_config,
         train_params=train_params_, train_loss=train_loss, nfe=torch_trainer.get_nfe(),
