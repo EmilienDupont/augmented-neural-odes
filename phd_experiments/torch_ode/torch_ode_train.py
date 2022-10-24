@@ -27,6 +27,8 @@ import datetime
 import logging
 import os.path
 from typing import Callable, Tuple
+
+import dill.source
 import torch
 from scipy.integrate import solve_ivp
 import numpy as np
@@ -35,52 +37,26 @@ from tqdm import tqdm
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
+
+from phd_experiments.torch_ode.DataGenerator import ToyODEDataGenerator
 from phd_experiments.torch_ode.torch_ode_solver import TorchODESolver
 from phd_experiments.torch_ode.torch_ode_utils import get_device_info, format_timedelta, log_train_experiment
 from phd_experiments.torch_ode.torch_rk45 import TorchRK45
 from phd_experiments.torch_ode.torch_train_learnable_dynamics import ODEFuncNN3Layer
-from phd_experiments.torch_ode.torch_train_true_dynamics import f_simple_linear_uncoupled_ode_1
-
-#########################
-# Global variables and settings
-# FIXME make it better !
-#########################
+from phd_experiments.torch_ode.torch_train_true_dynamics import f_ode_linear_uncoupled, f_ode_linear_coupled, \
+    f_van_der_pol
 
 SEED = 123456789
 np.random.seed(SEED)
-
 
 ##########################
 
 
 # Data Generation methods and classes
 
-
-class ToyODEDataGenerator():
-    def __init__(self, device: torch.device, tensor_dtype: torch.dtype, ulow: float, uhigh: float, f: Callable,
-                 t_span: Tuple, args: Tuple = None):
-        self.device = device
-        self.tensor_dtype = tensor_dtype
-        self.ulow = ulow
-        self.uhigh = uhigh
-        self.f = f
-        self.t_span = t_span
-        self.args = args
-
-    def generate(self, N, batch_size, splits):
-        X = np.random.uniform(low=self.ulow, high=self.uhigh, size=(N, 2))
-        tqdm.pandas(desc='Generate ODE toy data')
-        Y = pd.DataFrame(data=X).progress_apply(
-            lambda x: solve_ivp(fun=self.f, t_span=self.t_span, y0=x, args=self.args).y[:, -1],
-            axis=1).values
-        Y = np.stack(Y, axis=0)
-        data_set_ = TensorDataset(torch.tensor(X, device=self.device, dtype=self.tensor_dtype),
-                                  torch.tensor(Y, device=self.device, dtype=self.tensor_dtype))
-        lengths = list(map(lambda x: int(np.round(x * N)), splits))
-        train_set, test_set, val_set = torch.utils.data.random_split(dataset=data_set_, lengths=lengths)
-        return DataLoader(dataset=train_set, batch_size=batch_size, shuffle=True), \
-               DataLoader(dataset=test_set, batch_size=batch_size, shuffle=True), \
-               DataLoader(dataset=val_set, batch_size=batch_size, shuffle=True)
+F_TRUE_DYNAMICS_MAP = {'f1': (f_ode_linear_uncoupled, 1),
+                       'f2': (f_ode_linear_coupled, [[-1, 3], [4, -2]]),
+                       'f3': (f_van_der_pol, 1)}
 
 
 class TorchODETrainer:
@@ -118,7 +94,8 @@ class TorchODETrainer:
                 optimizer.step()
 
             if verbose and epoch % print_freq == 0:
-                logger.info(f'epoch : {epoch} loss = {loss.item()}')
+                self.logger.info(f'epoch : {epoch} loss = {loss.item()}')
+        self.logger.info(f'Final train loss after {self.num_epochs} = {loss.item()}')
         # get some training statistics
         self.train_nfe = self.ode_func_model.get_nfe()
         self.is_trained = True
@@ -155,6 +132,7 @@ def get_parser():
     parser.add_argument('--log-dir', type=str, required=True)
     parser.add_argument('--model-dir', type=str, required=True)
     parser.add_argument('--model-prefix', type=str, required=False, default='neural_model')
+    parser.add_argument('--f', type=str, choices=[f'f{i}' for i in range(1, 4)], required=True, default='f1')
     return parser
 
 
@@ -178,21 +156,24 @@ if __name__ == '__main__':
     torch_configs = {'device': torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu'),
                      'TENSOR_DTYPE': torch.float32}
     # generate toy dataset
-    dataset_config = {'t_span': (0, 1), 'f_params': {'a': 1}, 'num_batches': 1000, 'batch_size': 32,
-                      'splits': [0.7, 0.2, 0.1], 'f_true_dynamics': f_simple_linear_uncoupled_ode_1}
-
+    # dataset_config = {'t_span': (0, 1), 'f_params': {'a': 1}, 'num_batches': 1000, 'batch_size': 32,
+    #                   'splits': [0.7, 0.2, 0.1], 'f_true_dynamics': f_ode_linear_uncoupled}
+    dataset_config = {'data_dim': 2, 't_span': (0, 1), 'f_params': F_TRUE_DYNAMICS_MAP[args.f][1], 'num_batches': 100,
+                      'batch_size': 64,
+                      'splits': [0.7, 0.2, 0.1], 'f_true_dynamics': F_TRUE_DYNAMICS_MAP[args.f][0]}
     data_gen = ToyODEDataGenerator(device=torch_configs['device'], tensor_dtype=torch_configs['TENSOR_DTYPE'],
                                    ulow=-10, uhigh=10, f=dataset_config['f_true_dynamics'],
-                                   t_span=dataset_config['t_span'], args=(dataset_config['f_params']['a'],))
+                                   t_span=dataset_config['t_span'], args=(dataset_config['f_params'],))
     train_loader_, test_loader, val_loader = data_gen.generate(
         N=dataset_config['num_batches'] * dataset_config['batch_size'], batch_size=dataset_config['batch_size'],
         splits=dataset_config['splits'])
     # train
 
-    train_params_ = {'n_epochs': 1 if args.dryrun else 100, 'batch_size': dataset_config['batch_size'], 'lr': 1e-3,
-                     't_span': dataset_config['t_span']}
+    train_params_ = {'n_epochs': 1 if args.dryrun else 2000, 'batch_size': dataset_config['batch_size'], 'lr': 1e-3,
+                     't_span': dataset_config['t_span'], 'hidden_dim': 50}
 
-    ode_func_model_init = ODEFuncNN3Layer(device=torch_configs['device'], tensor_dtype=torch_configs['TENSOR_DTYPE'])
+    ode_func_model_init = ODEFuncNN3Layer(device=torch_configs['device'], tensor_dtype=torch_configs['TENSOR_DTYPE'],
+                                          data_dim=dataset_config['data_dim'], hidden_dim=train_params_['hidden_dim'])
     epochs_print_freq = max(int(train_params_['n_epochs'] / 10), 1)
     loss_fn = torch.nn.SmoothL1Loss()
     torch_solver_ = TorchRK45(device=torch_configs['device'], tensor_dtype=torch_configs['TENSOR_DTYPE'])
@@ -216,9 +197,9 @@ if __name__ == '__main__':
     log_train_experiment(
         experiment_log_filepath=os.path.join(args.log_dir, f"train_experiment_{experiment_timestamp}.json"),
         run_type="train", solver=torch_solver_, f_true_dynamic=dataset_config['f_true_dynamics'],
-        ode_func=ODEFuncNN3Layer, training_time_fmt=t_delta_fmt, torch_config=torch_configs, data_config=dataset_config,
-        train_params=train_params_, train_loss=train_loss, nfe=torch_trainer.get_nfe(),
-        total_solve_calls=torch_trainer.get_total_solve_call_count())
+        ode_learnable_func=ODEFuncNN3Layer, training_time_fmt=t_delta_fmt, torch_config=torch_configs,
+        data_config=dataset_config, train_params=train_params_, train_loss=train_loss,
+        nfe=torch_trainer.get_nfe(), total_solve_calls=torch_trainer.get_total_solve_call_count())
 
     # mean_eval_loss = evaluate(solver=torch_solver_, ode_func_model=ode_func_model_fitted,
     # t_span=train_hyper_params_['t_span'],

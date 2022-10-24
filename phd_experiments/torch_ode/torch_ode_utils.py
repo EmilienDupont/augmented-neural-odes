@@ -28,7 +28,7 @@ def format_timedelta(time_delta: datetime.timedelta):
 
 
 def log_train_experiment(experiment_log_filepath: str, solver: TorchODESolver, f_true_dynamic: Callable, run_type: str,
-                         total_solve_calls: int, training_time_fmt: str, ode_func: Type[nn.Module], torch_config: dict,
+                         total_solve_calls: int, training_time_fmt: str, ode_learnable_func: Type[nn.Module], torch_config: dict,
                          data_config: dict, train_params: dict, train_loss: float, nfe: int):
     payload = dict()
     with open(experiment_log_filepath, 'w') as f:
@@ -42,7 +42,7 @@ def log_train_experiment(experiment_log_filepath: str, solver: TorchODESolver, f
         payload['run_type'] = run_type
         payload['solver'] = str(type(solver))
         payload['f_true_dynamics'] = str(getsource(f_true_dynamic))
-        payload['ode_func'] = str(getsource(ode_func))
+        payload['ode_func'] = str(getsource(ode_learnable_func))
         payload['torch_config'] = str(torch_config)
         payload['data_config'] = str(data_config)
         payload['train_config'] = str(train_params)
