@@ -7,9 +7,12 @@ import torch
 import numpy.typing as npt
 from scipy.integrate import solve_ivp
 
+from phd_experiments.torch_ode.torch_ode_solver import TorchODESolver
+from phd_experiments.torch_ode.torch_rk45 import TorchRK45
 
-class TensorDiffEq(torch.nn.Module):
-    def __init__(self, input_dimensions: [int, List[int]], output_dimensions: [int, List[int]],
+
+class TensorODEBLOCK(torch.nn.Module):
+    def __init__(self, input_dimensions: List[int], output_dimensions: List[int],
                  tensor_dimensions: List[int], t_span: Tuple, t_eval: List = None):
         super().__init__()
         self.output_dimensions = output_dimensions
@@ -23,7 +26,7 @@ class TensorDiffEq(torch.nn.Module):
         # U dimensions
         U_sizes = tensor_dimensions[::-1]
         U_sizes.extend(tensor_dimensions)
-
+        assert len(U_sizes) % 2 == 0, "U sizes must be odd"
         # F_dimension
 
         F_sizes = tensor_dimensions[::-1]  # for time-dependent F
@@ -63,28 +66,32 @@ class TensorDiffEq(torch.nn.Module):
         # param check
         assert len(x.size()) == 2, "No support for batch inputs with d>1 yet"
 
-        # start forward pass
+        # start forward passc
         z0 = x  # redundant but useful for convention convenience
-        A0 = torch.tensordot(a=z0, b=self.P, dims=([1], [0]))
-        A0_flattened = torch.flatten(A0).detach().numpy()
-        A_sizes = A0.size()
-        sol = solve_ivp(fun=TensorDiffEq.odefunc, t_span=(0, 1), y0=A0_flattened, args=(A_sizes, self.U, None))
-        A_f = torch.tensor(np.transpose(sol.y)[-1]).view(A_sizes).to(torch.float32)
-        y_hat = torch.tensordot(a=A_f, b=self.F, dims=([1, 2, 3], [0, 1, 2]))
+        # assume z0 sizes/dimensions are batch x d0 x d1 x ... x d_z-1
+        # assume P sizes/dimensions are d_z-1 x ... x d1 x d0 x d0 x d1 x ... x (d_A-1)
+        z0_contract_sizes = list(range(1, len(self.input_dimensions) + 1))
+        P_contract_sizes = list(range(len(self.input_dimensions)))
+        A0 = torch.tensordot(a=z0, b=self.P, dims=(z0_contract_sizes, P_contract_sizes))
+        torch_solver = TorchRK45(device=torch.device('cpu'), tensor_dtype=torch.float32, )
+        sol = torch_solver.solve_ivp(func=self.ode_f, t_span=(0, 1), z0=A0, args=(self.U, None, self.tensor_dimensions))
+
+        A_f = sol.zf
+        A_contract_dims = list(range(1, len(self.tensor_dimensions) + 1))
+        F_contract_dims = list(range(0, len(self.tensor_dimensions)))
+        y_hat = torch.tensordot(a=A_f, b=self.F, dims=(A_contract_dims, F_contract_dims))
         return y_hat
 
-    @staticmethod
-    def odefunc(t: float, A_flattened: npt.ArrayLike, A_sizes: torch.Size, U: torch.Tensor, non_linear: str = None):
+    def ode_f(self, t: float, A: torch.Tensor, U: torch.Tensor, non_linearity: str | None,
+              tensor_dimensions: List[int]):
         """
 
         Parameters
         ----------
         t
-        A_flattened
-        A_sizes
+        A
         U
-        non_linear
-
+        non_linearity
         Returns
         -------
 
@@ -92,14 +99,19 @@ class TensorDiffEq(torch.nn.Module):
         # TODO
         """
         Monitor:
-        1. Parameter U,P,F evolution over time
+        1. Parameter U,P,F evolution over timef
         2. Loss evolution overtime
         Experiment 
         1. Time invariant U
         2. Time-variant U as diag(t) . U
         3. Non-linearity with U
         """
-        A = torch.Tensor(A_flattened).view(A_sizes)
-        A_out = torch.tensordot(A, U, dims=([1, 2, 3], [0, 1, 2]))
-        A_out_flattened = torch.flatten(A_out).detach().numpy()
-        return A_out_flattened
+        # FIXME : contract dims can be calculated outside derivative function to enhance the running time
+        # assume A_size : batch_size X d0 x d1 x...x (d_A-1)
+        A_contract_dims = list(range(1, len(tensor_dimensions) + 1))
+        # assume U_size : (d_A-1)x...x d1 x d0 x d0 x d1 x....(d_A-1)
+        U_contract_dims = list(range(len(tensor_dimensions)))  # Assume U_size is even
+
+        ##
+        dAdt = torch.tensordot(A, U, dims=(A_contract_dims, U_contract_dims))
+        return dAdt

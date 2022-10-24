@@ -7,7 +7,7 @@ from anode.training import Trainer
 from experiments.dataloaders import ConcentricSphere
 from torch.utils.data import DataLoader
 
-from phd_experiments.tde.tde_model import TensorDiffEq
+from phd_experiments.tde.tde_model import TensorODEBLOCK
 from phd_experiments.tde.tde_training_old_to_delete import TensorDiffEqTrainer
 from viz.plots import single_feature_plt, get_feature_history, multi_feature_plt, input_space_plt, iteration_plt
 from viz.plots import trajectory_plt
@@ -67,8 +67,8 @@ class ExperimentPipeline:
                           save_fig='neural_odes_nfes.png')
 
     def train_tensor_ode(self, lr=1e-3, num_epochs=100):
-        tensor_diff_eq_model = TensorDiffEq(input_dimensions=self.data_dim, output_dimensions=1, t_span=(0, 1),
-                                            tensor_dimensions=[2, 2, 2])
+        tensor_diff_eq_model = TensorODEBLOCK(input_dimensions=self.data_dim, output_dimensions=1, t_span=(0, 1),
+                                              tensor_dimensions=[2, 2, 2])
         optimizer = torch.optim.Adam(params=tensor_diff_eq_model.parameters(), lr=lr)
         loss_func = torch.nn.SmoothL1Loss()
         self.tensor_diff_eq_trainer = TensorDiffEqTrainer(model=tensor_diff_eq_model, optimizer=optimizer,

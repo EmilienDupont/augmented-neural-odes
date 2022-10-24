@@ -1,44 +1,20 @@
-attrs @ file:///opt/conda/conda-bld/attrs_1642510447205/work
-Bottleneck @ file:///opt/conda/conda-bld/bottleneck_1657175564434/work
-brotlipy==0.7.0
-certifi @ file:///croot/certifi_1665076670883/work/certifi
-cffi @ file:///tmp/abs_98z5h56wf8/croots/recipe/cffi_1659598650955/work
-charset-normalizer @ file:///tmp/build/80754af9/charset-normalizer_1630003229654/work
-cryptography @ file:///tmp/build/80754af9/cryptography_1652101588599/work
-cycler @ file:///tmp/build/80754af9/cycler_1637851556182/work
-fonttools==4.25.0
-idna @ file:///tmp/build/80754af9/idna_1637925883363/work
-imageio @ file:///tmp/abs_cd920173-f360-47c5-97b0-bf4d1076d5d4dvic0oys/croots/recipe/imageio_1658785036907/work
-iniconfig @ file:///home/linux1/recipes/ci/iniconfig_1610983019677/work
-kiwisolver @ file:///opt/conda/conda-bld/kiwisolver_1653292039266/work
-matplotlib @ file:///opt/conda/conda-bld/matplotlib-suite_1660167928326/work
-mkl-fft==1.3.1
-mkl-random @ file:///home/builder/ci_310/mkl_random_1641843545607/work
-mkl-service==2.4.0
-munkres==1.1.4
-numexpr @ file:///opt/conda/conda-bld/numexpr_1656940300424/work
-numpy @ file:///tmp/abs_653_j00fmm/croots/recipe/numpy_and_numpy_base_1659432701727/work
-packaging @ file:///tmp/build/80754af9/packaging_1637314298585/work
 pandas==1.4.4
-Pillow==9.2.0
-pluggy @ file:///tmp/build/80754af9/pluggy_1648024709248/work
-py @ file:///opt/conda/conda-bld/py_1644396412707/work
-pycparser @ file:///tmp/build/80754af9/pycparser_1636541352034/work
-pyOpenSSL @ file:///opt/conda/conda-bld/pyopenssl_1643788558760/work
-pyparsing @ file:///opt/conda/conda-bld/pyparsing_1661452539315/work
-PySocks @ file:///home/builder/ci_310/pysocks_1640793678128/work
 pytest==7.1.2
-python-dateutil @ file:///tmp/build/80754af9/python-dateutil_1626374649649/work
-pytz @ file:///opt/conda/conda-bld/pytz_1654762638606/work
-requests @ file:///opt/conda/conda-bld/requests_1657734628632/work
-scipy @ file:///home/builder/ci_310/scipy_1641389939032/work
-sip==4.19.13
-six @ file:///tmp/build/80754af9/six_1644875935023/work
-tomli @ file:///opt/conda/conda-bld/tomli_1657175507142/work
-torch==1.12.1
-torchaudio==0.12.1
 torchvision==0.13.1
-tornado @ file:///opt/conda/conda-bld/tornado_1662061693373/work
-tqdm @ file:///opt/conda/conda-bld/tqdm_1664392687731/work
-typing_extensions @ file:///tmp/abs_ben9emwtky/croots/recipe/typing_extensions_1659638822008/work
-urllib3 @ file:///tmp/abs_5dhwnz6atv/croots/recipe/urllib3_1659110457909/work
+
+imageio~=2.19.3
+matplotlib~=3.5.2
+numpy~=1.23.1
+pip~=22.2.2
+zlib~=1.2.12
+wheel~=0.37.1
+brotli~=1.0.9
+openssl~=1.1.1q
+cryptography~=37.0.1
+py~=1.11.0
+tornado~=6.2
+typing_extensions~=4.3.0
+setuptools~=63.4.1
+scipy~=1.7.3
+tqdm~=4.64.1
+dill~=0.3.4

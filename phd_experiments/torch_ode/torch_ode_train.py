@@ -164,7 +164,7 @@ if __name__ == '__main__':
     data_gen = ToyODEDataGenerator(device=torch_configs['device'], tensor_dtype=torch_configs['TENSOR_DTYPE'],
                                    ulow=-10, uhigh=10, f=dataset_config['f_true_dynamics'],
                                    t_span=dataset_config['t_span'], args=(dataset_config['f_params'],))
-    train_loader_, test_loader, val_loader = data_gen.generate(
+    train_loader_, test_loader, val_loader = data_gen.generate_ode(
         N=dataset_config['num_batches'] * dataset_config['batch_size'], batch_size=dataset_config['batch_size'],
         splits=dataset_config['splits'])
     # train

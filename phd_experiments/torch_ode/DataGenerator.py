@@ -1,6 +1,7 @@
 import logging
 from typing import Callable, Tuple
 
+import dill
 import numpy as np
 import pandas as pd
 import torch
@@ -21,7 +22,7 @@ class ToyODEDataGenerator():
         self.args = args
         self.logger = logging.getLogger()
 
-    def generate(self, N, batch_size, splits, data_dim=2):
+    def generate_ode(self, N, batch_size, splits, data_dim=2):
         X = np.random.uniform(low=self.ulow, high=self.uhigh, size=(N, data_dim))
         self.logger.info(f'Generating ode deta with dydt = \n{dill.source.getsource(self.f)}\n')
         tqdm.pandas(desc='Generate ODE toy data')
@@ -36,3 +37,6 @@ class ToyODEDataGenerator():
         return DataLoader(dataset=train_set, batch_size=batch_size, shuffle=True), \
                DataLoader(dataset=test_set, batch_size=batch_size, shuffle=True), \
                DataLoader(dataset=val_set, batch_size=batch_size, shuffle=True)
+
+    def generate_crossing_dataset(self, N, batch_size, splits):
+        pass
