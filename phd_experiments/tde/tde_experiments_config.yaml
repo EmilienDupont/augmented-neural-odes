@@ -1,0 +1,34 @@
+model:
+  name: "tensorode"
+data:
+  name: "flip1d"
+  n_train: 1000
+  n_test: 200
+  data_dim: 1
+  out_dim: 1
+flip1d:
+  flip: True
+torch:
+  device: "cpu"
+
+train:
+  n_epochs: 100
+  lr: 1e-3
+  batch_size: 32
+  print_freq: 10
+  loss: "smoothl1loss"
+resnet:
+  hidden_dim: 32
+  num_layers: 20
+neuralode:
+  hidden_dim: 32
+  num_layers: 20
+anode:
+  hidden_dim: 32
+  num_layers: 20
+  augment_dim: 1
+tensorode:
+  tensor_dims: [ 2 ]
+
+
+
