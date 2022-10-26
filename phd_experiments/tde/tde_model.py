@@ -15,6 +15,7 @@ class TensorODEBLOCK(torch.nn.Module):
     def __init__(self, input_dimensions: List[int], output_dimensions: List[int],
                  tensor_dimensions: List[int], t_span: Tuple, t_eval: List = None):
         super().__init__()
+        # FIXME add explicit params check
         self.output_dimensions = output_dimensions
         self.input_dimensions = input_dimensions
         self.tensor_dimensions = tensor_dimensions
@@ -43,6 +44,11 @@ class TensorODEBLOCK(torch.nn.Module):
         if t_eval is not None:
             assert t_eval[0] >= t_span[0] and t_eval[1] <= t_span[1], "t_eval must be subset of t_span ranges"
         self.monitor = {'U': [self.U], 'P': [self.P], 'F': [self.F]}
+
+    # TODO
+    @staticmethod
+    def params_check(input_dims: List[int], output_dims: List[int]):
+        pass
 
     def forward(self, x: torch.Tensor):
         """

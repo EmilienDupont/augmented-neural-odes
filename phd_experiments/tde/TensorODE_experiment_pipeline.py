@@ -6,45 +6,63 @@ import torch
 import yaml
 from anode.discrete_models import ResNet
 from anode.models import ODENet
-from experiments.dataloaders import Data1D
+from experiments.dataloaders import Data1D, ConcentricSphere
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 from torch.nn import SmoothL1Loss
 from torch.optim import Adam
 from phd_experiments.tde.tde_model import TensorODEBLOCK
 
-MODEL_NAMES = ['resnet', 'neuralode', 'anode', 'tensorode']
-DATASETS_NAMES = ['flip1d']
+MODEL_NAMES = ['resnet', 'node', 'anode', 'tode']
+DATASETS_NAMES = ['flip1d', 'concentric-sphere']
 
 
-def get_model(model_name: str, configs: dict):
-    if model_name == 'resnet':
-        return ResNet(data_dim=configs['data']['data_dim'], hidden_dim=configs[model_name]['hidden_dim'],
-                      num_layers=configs[model_name]['num_layers'],
-                      output_dim=configs['data']['out_dim'])
-    elif model_name == 'neuralode':
+def get_model(configs: dict):
+    if configs['model-name'] not in MODEL_NAMES:
+        raise ValueError(f"""Model name {configs['model-name']} is not supported : must be one of {MODEL_NAMES}""")
+    if configs['model-name'] == 'resnet':
+        return ResNet(data_dim=configs[configs['dataset-name']]['input_dim'],
+                      hidden_dim=configs[configs['model-name']]['hidden_dim'],
+                      num_layers=configs[configs['model-name']]['num_layers'],
+                      output_dim=configs[configs['dataset-name']]['output_dim'])
+    elif configs['model-name'] == 'node':
         # augment_dim = 0
-        return ODENet(device=torch.device(configs['torch']['device']), data_dim=configs['data']['data_dim'],
-                      hidden_dim=configs[model_name]['hidden_dim'], output_dim=configs['data']['out_dim'])
+        return ODENet(device=torch.device(configs['torch']['device']),
+                      data_dim=configs[configs['dataset-name']]['input_dim'],
+                      hidden_dim=configs[configs['model-name']]['hidden_dim'],
+                      output_dim=configs[configs['dataset-name']]['output_dim'])
 
-    elif model_name == 'anode':
-        return ODENet(device=torch.device(configs['torch']['device']), data_dim=configs['data']['data_dim'],
-                      hidden_dim=configs[model_name]['hidden_dim'], output_dim=configs['data']['out_dim'],
-                      augment_dim=configs[model_name]['augment_dim'])
-    elif model_name == 'tensorode':
-        return TensorODEBLOCK(input_dimensions=[configs['data']['data_dim']],
-                              output_dimensions=[configs['data']['out_dim']],
-                              tensor_dimensions=configs[model_name]['tensor_dims'],
+    elif configs['model-name'] == 'anode':
+        return ODENet(device=torch.device(configs['torch']['device']),
+                      data_dim=configs[configs['dataset-name']]['input_dim'],
+                      hidden_dim=configs[configs['model-name']]['hidden_dim'],
+                      output_dim=configs[configs['dataset-name']]['output_dim'],
+                      augment_dim=configs[configs['model-name']]['augment_dim'])
+    elif configs['model-name'] == 'tode':
+        input_dim = configs[configs['dataset-name']]['input_dim']
+        tensor_dims = configs[configs['model-name']]['tensor_dims'][input_dim]
+        return TensorODEBLOCK(input_dimensions=[input_dim],
+                              output_dimensions=[configs[configs['dataset-name']]['output_dim']],
+                              tensor_dimensions=tensor_dims,
                               t_span=(0, 1))
         # TODO should t_span be parameterized ?
-    else:
-        raise ValueError(f'Model name {model_name} is not supported : must be one of {MODEL_NAMES}')
 
 
 def get_data_loader(dataset_name: str, configs: dict):
     if dataset_name == 'flip1d':
-        train_dataset = Data1D(num_points=configs['data']['n_train'], target_flip=configs[dataset_name]['flip'])
-        test_dataset = Data1D(num_points=configs['data']['n_test'], target_flip=configs[dataset_name]['flip'])
+        train_dataset = Data1D(num_points=configs[dataset_name]['n_train'], target_flip=configs[dataset_name]['flip'])
+        test_dataset = Data1D(num_points=configs[dataset_name]['n_test'], target_flip=configs[dataset_name]['flip'])
+    elif dataset_name == 'concentric-sphere':
+        train_dataset = ConcentricSphere(dim=configs['data']['input_dim'],
+                                         inner_range=configs[dataset_name]['inner_range'],
+                                         outer_range=configs[dataset_name]['outer_range'],
+                                         num_points_inner=configs[dataset_name]['num_points_inner_train'],
+                                         num_points_outer=configs[dataset_name]['num_points_outer_train'])
+        test_dataset = ConcentricSphere(dim=configs['data']['input_dim'],
+                                        inner_range=configs[dataset_name]['inner_range'],
+                                        outer_range=configs[dataset_name]['outer_range'],
+                                        num_points_inner=configs[dataset_name]['num_points_inner_test'],
+                                        num_points_outer=configs[dataset_name]['num_points_outer_test'])
     else:
         raise ValueError(f'data {dataset_name} is not supported ! ')
     train_dataloader = DataLoader(dataset=train_dataset, batch_size=configs['train']['batch_size'], shuffle=True)
@@ -76,11 +94,11 @@ if __name__ == '__main__':
     parser = get_parser()
     args = parser.parse_args()
     with open(args.config) as f:
-        configs = yaml.load(stream=f, Loader=yaml.FullLoader)
-    logger.info(f"""Experimenting with model : {configs['model']['name']}""")
-    model_ = get_model(model_name=configs['model']['name'], configs=configs)
-    train_dataloader_, test_dataloader_ = get_data_loader(dataset_name=configs['data']['name'], configs=configs)
-    loss_fn = get_loss(loss_name=configs['train']['loss'])
+        configs_ = yaml.load(stream=f, Loader=yaml.FullLoader)
+    logger.info(f"""Experimenting with model : {configs_['model-name']}""")
+    model_ = get_model(configs=configs_)
+    train_dataloader_, test_dataloader_ = get_data_loader(dataset_name=configs_['dataset-name'], configs=configs_)
+    loss_fn = get_loss(loss_name=configs_['train']['loss'])
     target_flip = True
     batch_size = 32
     n_epochs = 100

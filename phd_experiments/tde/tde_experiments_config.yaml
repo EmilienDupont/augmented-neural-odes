@@ -1,34 +1,50 @@
-model:
-  name: "tensorode"
-data:
-  name: "flip1d"
-  n_train: 1000
-  n_test: 200
-  data_dim: 1
-  out_dim: 1
-flip1d:
-  flip: True
+# 1) Model selection - see sec 6
+model-name: 'tode'
+# 2) torch configs
 torch:
   device: "cpu"
+# 3) select a data-set. See sec 4
+dataset-name: 'flip1d'
+# 4) datasets
+# each dataset must have input_dim,output_dim
+flip1d:
+  input_dim: 1
+  output_dim: 1
+  flip: True
+  n_train: 1000
+  n_test: 200
 
+concentric-sphere:
+  input_dim: 2
+  output_dim: 1
+  inner_range: (0.,0.5) # ranges must be tuple of floats
+  outer_range: (1.,1.5)
+  n_inner_train: 400
+  n_outer_train: 400
+  n_inner_test: 100
+  n_outer_test: 100
+
+# 5 ) General train params
 train:
   n_epochs: 100
   lr: 1e-3
   batch_size: 32
   print_freq: 10
   loss: "smoothl1loss"
+
+# 6 ) Model-specific params
 resnet:
   hidden_dim: 32
   num_layers: 20
-neuralode:
+node: # neural ode
   hidden_dim: 32
   num_layers: 20
-anode:
+anode: # augmented neural ode
   hidden_dim: 32
   num_layers: 20
   augment_dim: 1
-tensorode:
-  tensor_dims: [ 2 ]
+tode: # tensor ode
+  tensor_dims: { 1: [ 2 ],2: [ 2 , 2 ] } # input-dim -> tensor-dims
 
 
 

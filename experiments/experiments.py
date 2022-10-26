@@ -1,5 +1,6 @@
 import json
 import matplotlib
+
 matplotlib.use('Agg')  # This is hacky (useful for running on VMs)
 import numpy as np
 import os
@@ -134,10 +135,9 @@ def run_experiments(device, data_dim=2, viz_batch_size=512, num_reps=5,
                     features.append(feats.detach().cpu())
                     predictions.append(preds.detach().cpu())
 
-
             results[-1]["model_info"].append({
                 "type": model_config["type"],
-                "loss_history":  loss_histories,
+                "loss_history": loss_histories,
                 "epoch_loss_history": epoch_loss_histories,
                 "avg_time": (time.time() - start) / num_reps
             })
@@ -275,4 +275,4 @@ def run_and_save_experiments(device, path_to_config, save_models=False,
                         torch.save(features, subdir + '/features_{}.pt'.format(j))
                         # Create figure of inputs to features
                         multi_feature_plt([inputs, features], targets,
-                                            save_fig=subdir + '/inp_to_feat_{}_{}_{}.png'.format(model_type, j, k))
+                                          save_fig=subdir + '/inp_to_feat_{}_{}_{}.png'.format(model_type, j, k))
