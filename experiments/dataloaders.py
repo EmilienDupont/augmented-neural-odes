@@ -1,4 +1,6 @@
 import glob
+from typing import Tuple
+
 import imageio
 import numpy as np
 import torch
@@ -84,8 +86,8 @@ class ConcentricSphere(Dataset):
         Number of points in outer cluster
     """
 
-    def __init__(self, dim, inner_range, outer_range, num_points_inner,
-                 num_points_outer):
+    def __init__(self, dim: int, inner_range:Tuple, outer_range: Tuple, num_points_inner:int,
+                 num_points_outer: int):
         self.dim = dim
         self.inner_range = inner_range
         self.outer_range = outer_range

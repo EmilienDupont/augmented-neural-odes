@@ -53,16 +53,18 @@ def get_data_loader(dataset_name: str, configs: dict):
         train_dataset = Data1D(num_points=configs[dataset_name]['n_train'], target_flip=configs[dataset_name]['flip'])
         test_dataset = Data1D(num_points=configs[dataset_name]['n_test'], target_flip=configs[dataset_name]['flip'])
     elif dataset_name == 'concentric-sphere':
-        train_dataset = ConcentricSphere(dim=configs['data']['input_dim'],
-                                         inner_range=configs[dataset_name]['inner_range'],
-                                         outer_range=configs[dataset_name]['outer_range'],
-                                         num_points_inner=configs[dataset_name]['num_points_inner_train'],
-                                         num_points_outer=configs[dataset_name]['num_points_outer_train'])
-        test_dataset = ConcentricSphere(dim=configs['data']['input_dim'],
-                                        inner_range=configs[dataset_name]['inner_range'],
-                                        outer_range=configs[dataset_name]['outer_range'],
-                                        num_points_inner=configs[dataset_name]['num_points_inner_test'],
-                                        num_points_outer=configs[dataset_name]['num_points_outer_test'])
+        inner_range_tuple = tuple(map(float, configs[configs['dataset-name']]['inner_range'].split(',')))
+        outer_range_tuple = tuple(map(float, configs[configs['dataset-name']]['outer_range'].split(',')))
+        train_dataset = ConcentricSphere(dim=configs[configs['dataset-name']]['input_dim'],
+                                         inner_range=inner_range_tuple,
+                                         outer_range=outer_range_tuple,
+                                         num_points_inner=configs[configs['dataset-name']]['n_inner_train'],
+                                         num_points_outer=configs[configs['dataset-name']]['n_outer_train'])
+        test_dataset = ConcentricSphere(dim=configs[configs['dataset-name']]['input_dim'],
+                                        inner_range=inner_range_tuple,
+                                        outer_range=outer_range_tuple,
+                                        num_points_inner=configs[configs['dataset-name']]['n_inner_train'],
+                                        num_points_outer=configs[configs['dataset-name']]['n_outer_train'])
     else:
         raise ValueError(f'data {dataset_name} is not supported ! ')
     train_dataloader = DataLoader(dataset=train_dataset, batch_size=configs['train']['batch_size'], shuffle=True)

@@ -17,8 +17,8 @@ flip1d:
 concentric-sphere:
   input_dim: 2
   output_dim: 1
-  inner_range: (0.,0.5) # ranges must be tuple of floats
-  outer_range: (1.,1.5)
+  inner_range: 0.,0.5 # ranges must be tuple of floats
+  outer_range: 1.,1.5
   n_inner_train: 400
   n_outer_train: 400
   n_inner_test: 100
