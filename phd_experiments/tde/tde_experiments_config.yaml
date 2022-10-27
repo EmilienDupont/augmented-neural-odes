@@ -1,5 +1,5 @@
 # 1) Model selection - see sec 6
-model-name: 'node'
+model-name: 'tode'
 # 2) torch configs
 torch:
   device: "cpu"
