@@ -1,5 +1,5 @@
 # 1) Model selection - see sec 6
-model-name: 'tode'
+model-name: 'node'
 # 2) torch configs
 torch:
   device: "cpu"
@@ -31,6 +31,8 @@ train:
   batch_size: 32
   print_freq: 10
   loss: "smoothl1loss"
+  loss_window: 10
+  loss_threshold: 1e-4 # must be adjusted based on dataset
 
 # 6 ) Model-specific params
 resnet:
@@ -44,7 +46,7 @@ anode: # augmented neural ode
   num_layers: 20
   augment_dim: 1
 tode: # tensor ode
-  tensor_dims: { 1: [ 2 ],2: [ 2 , 2 ] } # input-dim -> tensor-dims
+  tensor_dims: { 1: [ 2 ],2: [ 2 , 2 , 2 ] } # input-dim -> tensor-dims
 
 
 

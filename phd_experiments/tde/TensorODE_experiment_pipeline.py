@@ -92,28 +92,49 @@ if __name__ == '__main__':
     """
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger()
-
     parser = get_parser()
     args = parser.parse_args()
     with open(args.config) as f:
         configs_ = yaml.load(stream=f, Loader=yaml.FullLoader)
-    logger.info(f"""Experimenting with model : {configs_['model-name']}""")
+    logger.info(f"""Experimenting with model {configs_['model-name']} and dataset {configs_['dataset-name']}""")
     model_ = get_model(configs=configs_)
     train_dataloader_, test_dataloader_ = get_data_loader(dataset_name=configs_['dataset-name'], configs=configs_)
     loss_fn = get_loss(loss_name=configs_['train']['loss'])
     target_flip = True
-    batch_size = 32
-    n_epochs = 100
     optimizer = Adam(model_.parameters(), lr=1e-3)
     loss = torch.tensor([np.Inf])
-    for epoch in tqdm(range(n_epochs), desc="Epochs"):
+    epochs_loss_history = []
+    logger.info(f"""Starting training with n_epochs = {configs_['train']['n_epochs']},loss_threshold {
+        configs_['train']['loss_threshold']} and init loss = {loss.item()}""")
+    epoch = None
+    for epoch in tqdm(range(1, configs_['train']['n_epochs'] + 1), desc="Epochs"):
+        batch_losses = []
         for batch_idx, (X, Y) in enumerate(train_dataloader_):
             optimizer.zero_grad()
             Y_pred = model_(X)
             loss = loss_fn(Y_pred, Y)
             loss.backward()
             optimizer.step()
+            batch_losses.append(loss.item())
+        epoch_loss = np.mean(batch_losses)
         # print every freq epochs
         if epoch % 10 == 0:
-            logger.info(f'epoch = {epoch} | loss = {loss.item()}')
-    logger.info(f'final loss = {loss.item()}')
+            logger.info(f'epoch = {epoch} | loss = {epoch_loss}')
+        epochs_loss_history.append(epoch_loss)
+        effective_window = min(len(epochs_loss_history), configs_['train']['loss_window'])
+        rolling_avg_loss = np.mean(epochs_loss_history[-effective_window:])
+        if rolling_avg_loss <= float(configs_['train']['loss_threshold']):
+            logger.info(
+                f"""Training ended successfully :
+                Rolling average loss = {rolling_avg_loss} <= 
+                loss_threshold = {configs_['train']['loss_threshold']}""")
+            break
+    logger.info(f'final epoch loss = {epochs_loss_history[-1]} at epoch = {epoch}')
+
+    # to make sure pytorch computation graph is freed
+    # 
+    del loss
+    del epochs_loss_history
+    del batch_losses
+    del model_
+    del train_dataloader_
