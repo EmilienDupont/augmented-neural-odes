@@ -1,33 +1,40 @@
-import typing
-from typing import List, Tuple, Iterable
+from typing import List, Tuple
 
 import numpy as np
-import scipy.integrate
 import torch
-import numpy.typing as npt
-from scipy.integrate import solve_ivp
 
-from phd_experiments.torch_ode.torch_ode_solver import TorchODESolver
+from phd_experiments.tde.basis import Basis
 from phd_experiments.torch_ode.torch_rk45 import TorchRK45
 
 
 class TensorODEBLOCK(torch.nn.Module):
+    NON_LINEARITIES = {'relu': torch.nn.ReLU(), 'sigmoid': torch.nn.Sigmoid(), 'tanh': torch.nn.Tanh()}
+
     def __init__(self, input_dimensions: List[int], output_dimensions: List[int],
-                 tensor_dimensions: List[int], t_span: Tuple, t_eval: List = None):
+                 tensor_dimensions: List[int], poly_dim: int, t_span: Tuple, non_linearity: None | str = None,
+                 t_eval: List = None):
         super().__init__()
         # FIXME add explicit params check
         self.output_dimensions = output_dimensions
         self.input_dimensions = input_dimensions
         self.tensor_dimensions = tensor_dimensions
-
+        self.non_linearity = non_linearity
+        self.poly_dim = poly_dim
+        # assert parameters
+        if non_linearity and non_linearity not in TensorODEBLOCK.NON_LINEARITIES.keys():
+            raise ValueError(
+                f'Non-linearity {self.non_linearity} not supported : must be one of '
+                f'{TensorODEBLOCK.NON_LINEARITIES.keys()}')
+        # Tensor param dims
+        D_tot = np.prod(tensor_dimensions)
         # P_dimensions
         P_sizes = [input_dimensions] if isinstance(input_dimensions, int) else input_dimensions[::-1]
         P_sizes.extend(tensor_dimensions)
 
         # U dimensions
-        U_sizes = tensor_dimensions[::-1]
+        U_sizes = [D_tot, self.poly_dim + 1]
         U_sizes.extend(tensor_dimensions)
-        assert len(U_sizes) % 2 == 0, "U sizes must be odd"
+        # assert len(U_sizes) % 2 == 0, "U sizes must be odd"
         # F_dimension
 
         F_sizes = tensor_dimensions[::-1]  # for time-dependent F
@@ -80,7 +87,8 @@ class TensorODEBLOCK(torch.nn.Module):
         P_contract_sizes = list(range(len(self.input_dimensions)))
         A0 = torch.tensordot(a=z0, b=self.P, dims=(z0_contract_sizes, P_contract_sizes))
         torch_solver = TorchRK45(device=torch.device('cpu'), tensor_dtype=torch.float32, )
-        sol = torch_solver.solve_ivp(func=self.ode_f, t_span=(0, 1), z0=A0, args=(self.U, None, self.tensor_dimensions))
+        sol = torch_solver.solve_ivp(func=self.ode_f, t_span=(0, 1), z0=A0,
+                                     args=(self.U, self.poly_dim))
 
         A_f = sol.zf
         A_contract_dims = list(range(1, len(self.tensor_dimensions) + 1))
@@ -88,8 +96,7 @@ class TensorODEBLOCK(torch.nn.Module):
         y_hat = torch.tensordot(a=A_f, b=self.F, dims=(A_contract_dims, F_contract_dims))
         return y_hat
 
-    def ode_f(self, t: float, A: torch.Tensor, U: torch.Tensor, non_linearity: str | None,
-              tensor_dimensions: List[int]):
+    def ode_f(self, t: float, A: torch.Tensor, U: torch.Tensor, poly_dim: int):
         """
 
         Parameters
@@ -114,10 +121,17 @@ class TensorODEBLOCK(torch.nn.Module):
         """
         # FIXME : contract dims can be calculated outside derivative function to enhance the running time
         # assume A_size : batch_size X d0 x d1 x...x (d_A-1)
-        A_contract_dims = list(range(1, len(tensor_dimensions) + 1))
+        A_contract_dims = [1, 2]  # list(range(1, len(tensor_dimensions) + 1))
         # assume U_size : (d_A-1)x...x d1 x d0 x d0 x d1 x....(d_A-1)
-        U_contract_dims = list(range(len(tensor_dimensions)))  # Assume U_size is even
-
+        U_contract_dims = [0, 1]  # list(range(len(tensor_dimensions)))  # Assume U_size is even
+        A_basis = Basis.poly(x=A, poly_dim=poly_dim)
         ##
-        dAdt = torch.tensordot(A, U, dims=(A_contract_dims, U_contract_dims))
+        dAdt = torch.tensordot(A_basis, U, dims=(A_contract_dims, U_contract_dims))
+        # print(t)
         return dAdt
+        # if not non_linearity:
+        #     dAdt = L
+        # else:
+        #     non_linearity_fn = TensorODEBLOCK.NON_LINEARITIES[non_linearity]
+        #     dAdt = non_linearity_fn(L)
+        # return dAdt

@@ -41,10 +41,12 @@ def get_model(configs: dict):
     elif configs['model-name'] == 'tode':
         input_dim = configs[configs['dataset-name']]['input_dim']
         tensor_dims = configs[configs['model-name']]['tensor_dims'][input_dim]
+        non_linearity = None if configs[configs['model-name']]['non_linearity'] == 'None' else \
+            configs[configs['model-name']]['non_linearity']
         return TensorODEBLOCK(input_dimensions=[input_dim],
                               output_dimensions=[configs[configs['dataset-name']]['output_dim']],
-                              tensor_dimensions=tensor_dims,
-                              t_span=(0, 1))
+                              tensor_dimensions=tensor_dims, poly_dim=configs[configs['model-name']]['poly_dim'],
+                              t_span=(0, 1), non_linearity=non_linearity)
         # TODO should t_span be parameterized ?
 
 
@@ -101,11 +103,11 @@ if __name__ == '__main__':
     train_dataloader_, test_dataloader_ = get_data_loader(dataset_name=configs_['dataset-name'], configs=configs_)
     loss_fn = get_loss(loss_name=configs_['train']['loss'])
     target_flip = True
-    optimizer = Adam(model_.parameters(), lr=1e-3)
+    optimizer = Adam(model_.parameters(), lr=float(configs_['train']['lr']))
     loss = torch.tensor([np.Inf])
     epochs_loss_history = []
     logger.info(f"""Starting training with n_epochs = {configs_['train']['n_epochs']},loss_threshold {
-        configs_['train']['loss_threshold']} and init loss = {loss.item()}""")
+    configs_['train']['loss_threshold']} and init loss = {loss.item()}""")
     epoch = None
     for epoch in tqdm(range(1, configs_['train']['n_epochs'] + 1), desc="Epochs"):
         batch_losses = []
