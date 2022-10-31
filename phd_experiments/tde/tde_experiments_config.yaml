@@ -26,9 +26,9 @@ concentric-sphere:
 
 # 5 ) General train params
 train:
-  n_epochs: 200
+  n_epochs: 1000
   lr: 1e-3
-  batch_size: 32
+  batch_size: 64
   print_freq: 10
   loss: "smoothl1loss"
   loss_window: 10
@@ -46,9 +46,16 @@ anode: # augmented neural ode
   num_layers: 20
   augment_dim: 1
 tode: # tensor ode
-  tensor_dims: { 1: [ 2 ],2: [ 2 , 2 ] } # input-dim -> tensor-dims
-  non_linearity: None
-  poly_dim: 3
+  tensor_dims: { 1: [ 2 ],2: [ 3 ] }  # the tensor-dim for the projected latent variable
+  # input-dims -> tensor-dims
+  # as a start let's simplify things and make tensors_dim of the same order as the input
+  # i.e. if the input is vector (order-1 tensor ) then tensor-dim will be (order-1 tensor) with
+  # higher dimensions
+  # if input is a matrix (order-2 tensor) the tensor-dim will be for order-2 tensor also (matrix) but with higher
+  # dimensions
+  # if input is a 3D tensor (colored) image -> tensor dims will be for order-3 tensor with higher dimensions
 
+  non_linearity: None
+  basis: poly,2 # poly, dim or trig , a,b,c
 
 

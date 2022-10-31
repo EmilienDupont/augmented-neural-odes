@@ -21,7 +21,7 @@ class Basis:
         pass
 
     @staticmethod
-    def poly(x: torch.Tensor,poly_dim: int) -> Tensor:
+    def poly(x: torch.Tensor, t: float, poly_dim: int) -> Tensor:
         """
         x : tensor of shape B x d1 x d2 x ... x dm : where m is the order of the tensor
         where B is batch size
@@ -32,14 +32,41 @@ class Basis:
         """
 
         B = list(x.size())[0]
-        # t_tensor = torch.tensor(np.repeat(t, B), dtype=x.dtype).view(-1, 1)
+        t_tensor = torch.tensor(np.repeat(t, B), dtype=x.dtype).view(-1, 1)
         x_flat = torch.flatten(x, start_dim=1)
         # assert x_flat.requires_grad, "After flatten requires grad = False"
-        # x_aug = torch.cat(tensors=[x_flat], dim=1)
-        x_pow = torch.clone(x_flat)
-        x_poly_list = [x_pow]  # to the power 0
-        for p in range(1, poly_dim + 1):
-            x_pow = torch.mul(x_pow, x_flat)
+        x_aug = torch.cat(tensors=[x_flat, t_tensor], dim=1)
+        # x_pow = torch.clone(x_aug)
+        x_poly_list = []
+        for p in range(poly_dim + 1):
+            x_pow = torch.pow(x_aug, p)
             x_poly_list.append(x_pow)
         x_basis = torch.stack(tensors=x_poly_list, dim=2)
         return x_basis
+
+    @staticmethod
+    def trig(x: torch.Tensor, t: float, a: float, b: float, c: float):
+        n_x_dims = len(x.size())
+        x_sin = a * torch.sin(b * x + c)
+        x_cos = a * torch.cos(b * x + c)
+        x_basis = torch.stack(tensors=[x_sin, x_cos], dim=n_x_dims)
+        return x_basis
+
+    # RBF
+    """
+    RBF http://www.scholarpedia.org/article/Radial_basis_function#Definition_of_the_method
+    RBF function approximations : https://arxiv.org/pdf/1806.07705.pdf 
+    RBF Practical Guide http://num.math.uni-goettingen.de/~schaback/teaching/sc.pdf
+    NL Reg : RBF regression http://www.cs.toronto.edu/~mbrubake/teaching/C11/Handouts/NonlinearRegression.pdf 
+    """
+
+    @staticmethod
+    def rbf():
+        pass
+
+    # http://mlg.eng.cam.ac.uk/pub/pdf/Ras04.pdf
+    @staticmethod
+    # GP for ML http://gaussianprocess.org/gpml/chapters/RW.pdf
+    # GP and TT https://arxiv.org/abs/1710.07324
+    def GPKernel():
+        pass
