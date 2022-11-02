@@ -28,9 +28,11 @@ class Basis:
          let D = d1xd2x...dm
         P : degrees of basis polynomial
         t : time value
-        return  : Tensor of B x (D+1) x (P+1)
+        return  : Tensor of B x (x_dim+1) x (poly_dim) . x_dim + 1 because of time augmentation
         """
-
+        # FIXME currently we assume that x is a batch of vectors i.e dim(x) = (batch X x_dim)
+        assert len(x.size()) == 2, \
+            "For now : we assume that the input to poly basis is batch-vec with Bx dim dimensions"
         B = list(x.size())[0]
         t_tensor = torch.tensor(np.repeat(t, B), dtype=x.dtype).view(-1, 1)
         x_flat = torch.flatten(x, start_dim=1)
@@ -42,6 +44,8 @@ class Basis:
             x_pow = torch.pow(x_aug, p)
             x_poly_list.append(x_pow)
         x_basis = torch.stack(tensors=x_poly_list, dim=2)
+        assert len(x_basis.size()) == 3, "For now : we assume that poly basis should return order-3 tensor" \
+                                         "s.t. dim(x_basis) = batch X (x_dim +1 ) * (poly_dim) "
         return x_basis
 
     @staticmethod

@@ -2,7 +2,8 @@ from typing import List, Tuple
 
 import numpy as np
 import torch
-
+from torch import vmap
+# https://pytorch.org/tutorials/prototype/vmap_recipe.html
 from phd_experiments.tde.basis import Basis
 from phd_experiments.torch_ode.torch_rk45 import TorchRK45
 
@@ -42,13 +43,12 @@ class TensorODEBLOCK(torch.nn.Module):
         elif basis_[0] == 'trig':
             self.basis_params = {'a': basis_[1], 'b': basis_[2], 'c': basis_[3]}
 
-        # U dimensions
+        # C dimensions
         if self.basis_fn == 'poly':
-            D = np.prod(self.tensor_dimensions)
+            D = int(np.prod(self.tensor_dimensions))
             assert isinstance(D, int)  # used as repeats
-            C_dims = tensor_dimensions # the output is the projected latent A
-            C_dims.extend(list(np.repeat(a=int(int(self.basis_params['dim'])), repeats=D+1))) # +1 for time
-            C_dims.extend(self.tensor_dimensions.copy())
+            C_dims = tensor_dimensions.copy()  # the output is the projected latent A
+            C_dims.extend(list(np.repeat(a=int(int(self.basis_params['dim']) + 1), repeats=D + 1)))  # +1 for time
         elif self.basis_fn == 'trig':
             C_dims = tensor_dimensions.copy()
             C_dims.extend(tensor_dimensions.copy())
@@ -120,6 +120,20 @@ class TensorODEBLOCK(torch.nn.Module):
         y_hat = torch.tensordot(a=A_f, b=self.F, dims=(A_contract_dims, F_contract_dims))
         return y_hat
 
+    @staticmethod
+    def tensor_contract(A_basis: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
+        A_basis_dims = A_basis.size()
+        assert len(A_basis_dims) == 2, "Assume A basis dims = (x_dim+1) X (basis_dim+1)"
+        n_basis = list(A_basis.size())[0]
+        c_n_dims = len(c.size())
+        c_contract_dims = list(range(c_n_dims))[-n_basis:]
+        assert len(c_contract_dims) == n_basis, "num of contract dims in must = num_basis"
+        res = c
+        res_contract_dim = list(range(len(c.size())))[-n_basis]
+        for i in range(n_basis):
+            res = torch.tensordot(a=res, b=A_basis[i, :], dims=([res_contract_dim], [0]))
+        return res
+
     def ode_f(self, t: float, A: torch.Tensor, C: torch.Tensor, basis_fn: str, basis_params: dict):
         # TODO batched dot (what we need)
         # https://pytorch.org/tutorials/prototype/vmap_recipe.html
@@ -146,10 +160,13 @@ class TensorODEBLOCK(torch.nn.Module):
         3. Non-linearity with U
         """
         if basis_fn == 'poly':
-            A_contract_dims = [1, 2]
-            U_contract_dims = [0, 1]
+
             A_basis = Basis.poly(x=A, t=t, poly_dim=basis_params['dim'])
-            dAdt = torch.tensordot(A_basis, C, dims=(A_contract_dims, U_contract_dims))
+            # https://pytorch.org/tutorials/prototype/vmap_recipe.html#so-what-is-vmap
+            # https://pytorch.org/functorch/stable/generated/functorch.vmap.html
+            batched_contract = vmap(func=TensorODEBLOCK.tensor_contract, in_dims=(0, None))
+
+            dAdt = batched_contract(A_basis, C)
         elif basis_fn == 'trig':
             A_basis = Basis.trig(A, t, float(basis_params['a']), float(basis_params['b']), float(basis_params['c']))
             U_contract_dims = list(range(len(self.tensor_dimensions), len(C.size())))
