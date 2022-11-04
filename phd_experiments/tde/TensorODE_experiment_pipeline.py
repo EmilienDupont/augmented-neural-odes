@@ -46,7 +46,7 @@ def get_model(configs: dict):
         return TensorODEBLOCK(input_dimensions=[input_dim],
                               output_dimensions=[configs[configs['dataset-name']]['output_dim']],
                               tensor_dimensions=tensor_dims, basis_str=configs[configs['model-name']]['basis'],
-                              t_span=(0, 1), non_linearity=non_linearity)
+                              t_span=tuple(configs[configs['model-name']]['t_span']), non_linearity=non_linearity)
         # TODO should t_span be parameterized ?
 
 

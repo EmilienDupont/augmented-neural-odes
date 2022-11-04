@@ -31,21 +31,21 @@ class Basis:
         return  : Tensor of B x (x_dim+1) x (poly_dim) . x_dim + 1 because of time augmentation
         """
         # FIXME currently we assume that x is a batch of vectors i.e dim(x) = (batch X x_dim)
-        assert len(x.size()) == 2, \
-            "For now : we assume that the input to poly basis is batch-vec with Bx dim dimensions"
+        assert len(x.size()) == 1, \
+            "For now : we assume that the input to poly basis is a vector"
         B = list(x.size())[0]
-        t_tensor = torch.tensor(np.repeat(t, B), dtype=x.dtype).view(-1, 1)
-        x_flat = torch.flatten(x, start_dim=1)
-        # assert x_flat.requires_grad, "After flatten requires grad = False"
-        x_aug = torch.cat(tensors=[x_flat, t_tensor], dim=1)
+        # t_tensor = torch.tensor(np.repeat(t, B), dtype=x.dtype).view(-1, 1)
+        # x_flat = torch.flatten(x, start_dim=1)
+        # # assert x_flat.requires_grad, "After flatten requires grad = False"
+        x_aug = torch.cat(tensors=[x.T.view(1, -1), torch.tensor([t],dtype=x.dtype).view(1, 1)], dim=1)
         # x_pow = torch.clone(x_aug)
         x_poly_list = []
         for p in range(poly_dim + 1):
             x_pow = torch.pow(x_aug, p)
             x_poly_list.append(x_pow)
-        x_basis = torch.stack(tensors=x_poly_list, dim=2)
-        assert len(x_basis.size()) == 3, "For now : we assume that poly basis should return order-3 tensor" \
-                                         "s.t. dim(x_basis) = batch X (x_dim +1 ) * (poly_dim) "
+        x_basis = torch.concat(tensors=x_poly_list, dim=0)
+        assert len(x_basis.size()) == 2, "For now : we assume that poly basis should return order-2 tensor" \
+                                         "s.t. dim(x_basis) = (poly_dim+1) * (x_dim +1 ) "
         return x_basis
 
     @staticmethod

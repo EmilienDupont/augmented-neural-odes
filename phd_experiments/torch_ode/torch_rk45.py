@@ -15,8 +15,6 @@ from typing import Callable, Tuple, Any
 import numpy as np
 import torch
 from torch import Tensor
-from tqdm import tqdm
-
 from phd_experiments.torch_ode.common import torch_select_initial_step, torch_rms_norm
 from phd_experiments.torch_ode.torch_ode_solver import TorchODESolver, TorchODESolverSolution
 
@@ -95,13 +93,13 @@ class TorchRK45(TorchODESolver):
         torch.Tensor, torch.Tensor]:
         # based on scipy integrate rk_step method
         # https://github.com/scipy/scipy/blob/v1.9.2/scipy/integrate/_ivp/rk.py#L14
-        K[0] = f.T
+        K[0] = f
         for s, (a, c) in enumerate(zip(A[1:], C[1:]), start=1):
             dz = torch.matmul(K[:s].T, a[:s]) * h
             K[s] = func(t + c * h, z + dz).T
         z_new = z + h * torch.matmul(K[:-1].T, B)
         f_new = func(t + h, z_new)
-        K[-1] = f_new.T
+        K[-1] = f_new
         return z_new, f_new
 
     @staticmethod
