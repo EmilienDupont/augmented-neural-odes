@@ -1,0 +1,32 @@
+8 Nov 2022
+
+break training if loss < 1e-4 or till epochs <=200
+Data            Model           Finalloss(Smooth1loss)      Running-time(seconds)       Num-Epochs      NFE/Sample ???
+flip1d          ResNet          9e-5                        10                          104/200         --
+flip1d          NODE            0.5                         50                          200/200         10.95
+flip1d          ANODE           1e-5                        3                           16/200          4.5
+flip1d          TODE(no-basis)  9e-5                        7                           154/200         4635 ????????
+conc-sphere     ResNet          8e-5                        9                           124/200         --
+conc-sphere     Node            2e-4                        31                          200/200         5.88
+conc-sphere     Anode           7e-5                        17                          124/200         4.78
+conc-sphere     TODE(no-basis)  0.5                         12                          200/200         5547.44
+
+========================================================
+29 Sep 2022
+---------------------
+initial model with non-lineariy sigma(U.A) in the derivative function and the Final function F is a tensor
+
+final result
+
+DEBUG:root:Epoch # 1000 and batch-iter # 21 : loss = 0.5133312940597534
+================================================================================
+
+29 Sep 2022
+----------------
+Monitor Parameters U,P,F evolution over training pass (fw/bw) calls
+
+============================================================================
+
+
+
+

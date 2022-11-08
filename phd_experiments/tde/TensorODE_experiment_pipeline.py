@@ -1,3 +1,4 @@
+import datetime
 import logging
 from argparse import ArgumentParser
 
@@ -46,7 +47,8 @@ def get_model(configs: dict):
         return TensorODEBLOCK(input_dimensions=[input_dim],
                               output_dimensions=[configs[configs['dataset-name']]['output_dim']],
                               tensor_dimensions=tensor_dims, basis_str=configs[configs['model-name']]['basis'],
-                              t_span=tuple(configs[configs['model-name']]['t_span']), non_linearity=non_linearity)
+                              t_span=tuple(configs[configs['model-name']]['t_span']), non_linearity=non_linearity,
+                              forward_impl_method=configs[configs['model-name']]['forward_impl_method'])
         # TODO should t_span be parameterized ?
 
 
@@ -109,11 +111,17 @@ if __name__ == '__main__':
     logger.info(f"""Starting training with n_epochs = {configs_['train']['n_epochs']},loss_threshold {
     configs_['train']['loss_threshold']} and init loss = {loss.item()}""")
     epoch = None
+    start_time = datetime.datetime.now()
+    batch_size = configs_['train']['batch_size']
+    total_nfe = 0
+
     for epoch in tqdm(range(1, configs_['train']['n_epochs'] + 1), desc="Epochs"):
         batch_losses = []
         for batch_idx, (X, Y) in enumerate(train_dataloader_):
             optimizer.zero_grad()
             Y_pred = model_(X)
+            if isinstance(model_, (ODENet, TensorODEBLOCK)):
+                total_nfe += model_.get_nfe()
             loss = loss_fn(Y_pred, Y)
             loss.backward()
             optimizer.step()
@@ -131,10 +139,13 @@ if __name__ == '__main__':
                 Rolling average loss = {rolling_avg_loss} <= 
                 loss_threshold = {configs_['train']['loss_threshold']}""")
             break
-    logger.info(f'final epoch loss = {epochs_loss_history[-1]} at epoch = {epoch}')
+    end_time = datetime.datetime.now()
+    training_time = end_time - start_time
+    logger.info(
+        f'final epoch loss = {epochs_loss_history[-1]} at epoch = {epoch} , '
+        f'training time = {training_time.seconds} seconds '
+        f'nfe/sample = {float(total_nfe) / (epoch * batch_size)}')
 
-    # to make sure pytorch computation graph is freed
-    # 
     del loss
     del epochs_loss_history
     del batch_losses

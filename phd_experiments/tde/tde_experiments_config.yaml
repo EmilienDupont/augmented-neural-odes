@@ -4,7 +4,7 @@ model-name: 'tode'
 torch:
   device: "cpu"
 # 3) select a data-set. See sec 4
-dataset-name: 'flip1d'
+dataset-name: 'concentric-sphere'
 # 4) datasets
 # each dataset must have input_dim,output_dim
 flip1d:
@@ -26,7 +26,7 @@ concentric-sphere:
 
 # 5 ) General train params
 train:
-  n_epochs: 1000
+  n_epochs: 200
   lr: 1e-3
   batch_size: 64
   print_freq: 10
@@ -55,7 +55,7 @@ tode: # tensor ode
   # dimensions
   # if input is a 3D tensor (colored) image -> tensor dims will be for order-3 tensor with higher dimensions
   non_linearity: None
-  basis: poly,0 # poly, dim or trig , a,b,c
-  t_span: [0,1]
-
+  basis: None # poly, dim or trig , a,b,c
+  t_span: [ 0,1 ]
+  forward_impl_method: "batch_torch"
 

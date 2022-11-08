@@ -248,3 +248,6 @@ class ODENet(nn.Module):
         features_trajectory[timesteps - 1, 0, 0] = pred.item()  # FIXME : assume data_dim = 1
         features_trajectory[timesteps - 1, 0, 1] = 0  # FIXME : assume augment_dim = 1
         return features_trajectory
+
+    def get_nfe(self):
+        return self.odefunc.nfe

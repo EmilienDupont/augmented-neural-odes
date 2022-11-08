@@ -30,8 +30,9 @@ class TorchRK45(TorchODESolver):
     MAX_FACTOR = 10
 
     def __init__(self, device: torch.device, tensor_dtype: torch.dtype, step_size: [float, str] = 0.01, rtol=1e-3,
-                 atol=1e-6):
+                 atol=1e-6, is_batch: bool = True):
         super().__init__(step_size)
+        self.is_batch = is_batch
         self.atol = atol
         self.rtol = rtol
         self.tensor_dtype = tensor_dtype
@@ -60,7 +61,7 @@ class TorchRK45(TorchODESolver):
         if args:
             func = lambda t, x, func=func: func(t, x, *args)
         # start integration
-        z = z0.type(torch.float32)
+        z = z0.type(self.tensor_dtype)
         f = func(t0, z0)
         t = t0
         z_trajectory = [z0]
@@ -68,7 +69,6 @@ class TorchRK45(TorchODESolver):
         K_sizes = [TorchRK45.N_STAGES + 1]
         K_sizes.extend(list(z0.size())[::-1])
         self.K = torch.empty(K_sizes, dtype=self.tensor_dtype, device=self.device)
-
         f0 = func(t0, z0)
         h = torch_select_initial_step(fun=func, t0=t0, y0=z0, f0=f0, direction=1, order=self.ERROR_ESTIMATOR_ORDER,
                                       rtol=self.rtol, atol=self.atol)
@@ -78,7 +78,7 @@ class TorchRK45(TorchODESolver):
 
             z, f, h, t = TorchRK45._torch_rk_step_adaptive_step(func=func, t=t, tf=tf, z=z, f=f, h=h, A=self.A,
                                                                 B=self.B, C=self.C, K=self.K, E=self.E, atol=self.atol,
-                                                                rtol=self.rtol)
+                                                                rtol=self.rtol,is_batch=self.is_batch)
 
             if abs(t - tf) < 1e-4:
                 finished = True
@@ -89,26 +89,26 @@ class TorchRK45(TorchODESolver):
 
     @staticmethod
     def _torch_rk_step(func: Callable, t: float, z: torch.Tensor, f: torch.Tensor, h: torch.Tensor,
-                       A: torch.Tensor, B: torch.Tensor, C: torch.Tensor, K: torch.Tensor) -> Tuple[
+                       A: torch.Tensor, B: torch.Tensor, C: torch.Tensor, K: torch.Tensor, is_batch: bool) -> Tuple[
         torch.Tensor, torch.Tensor]:
         # based on scipy integrate rk_step method
         # https://github.com/scipy/scipy/blob/v1.9.2/scipy/integrate/_ivp/rk.py#L14
-        K[0] = f
-        for s, (a, c) in enumerate(zip(A[1:], C[1:]), start=1):
-            dz = torch.matmul(K[:s].T, a[:s]) * h
-            K[s] = func(t + c * h, z + dz).T
-        z_new = z + h * torch.matmul(K[:-1].T, B)
-        f_new = func(t + h, z_new)
-        K[-1] = f_new
-        return z_new, f_new
+        if is_batch:
+            K[0] = f.T if is_batch else f
+            for s, (a, c) in enumerate(zip(A[1:], C[1:]), start=1):
+                dz = torch.matmul(K[:s].T, a[:s]) * h
+                K[s] = func(t + c * h, z + dz).T if is_batch else func(t + c * h, z + dz)
+            z_new = z + h * torch.matmul(K[:-1].T, B)
+            f_new = func(t + h, z_new)
+            K[-1] = f_new.T if is_batch else f_new
+            return z_new, f_new
 
     @staticmethod
     def _torch_rk_step_adaptive_step(func: Callable, t: float, tf: float, z: torch.Tensor, f: torch.Tensor,
                                      h: float,
                                      A: torch.Tensor, B: torch.Tensor, C: torch.Tensor, K: torch.Tensor,
                                      E: torch.Tensor, rtol: float,
-                                     atol: float) -> tuple[Tensor, Tensor, float, float]:
-
+                                     atol: float, is_batch: bool) -> tuple[Tensor, Tensor, float, float]:
         max_step = torch.inf
         min_step = 10 * np.abs(np.nextafter(t, np.inf) - t)
         if h > max_step:
@@ -129,7 +129,8 @@ class TorchRK45(TorchODESolver):
 
             h = t_new - t
 
-            z_new, f_new = TorchRK45._torch_rk_step(func=func, t=t, z=z, f=f, h=h, A=A, B=B, C=C, K=K)
+            z_new, f_new = TorchRK45._torch_rk_step(func=func, t=t, z=z, f=f, h=h, A=A, B=B, C=C, K=K,
+                                                    is_batch=is_batch)
             scale = atol + torch.maximum(torch.abs(z_new), torch.abs(z)) * rtol
             error_norm = TorchRK45._estimate_error_norm(K, E, h, scale)
             error_exponent = -1 / (TorchRK45.ERROR_ESTIMATOR_ORDER + 1)
