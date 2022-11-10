@@ -14,7 +14,9 @@ class Basis:
     https://arxiv.org/pdf/1405.5713.pdf
     https://proceedings.neurips.cc/paper/2016/file/5314b9674c86e3f9d1ba25ef9bb32895-Paper.pdf  sec 2
     https://arxiv.org/pdf/2111.14540.pdf
-
+    https://github.com/goroda/PyTorchPoly
+    https://mlatcl.github.io/deepnn/background/background-basis-functions.html
+    https://www.geeksforgeeks.org/python-implementation-of-polynomial-regression/
     """
 
     def __init__(self):
@@ -29,6 +31,9 @@ class Basis:
         P : degrees of basis polynomial
         t : time value
         return  : Tensor of B x (x_dim+1) x (poly_dim) . x_dim + 1 because of time augmentation
+        """
+        """
+        https://github.com/goroda/PyTorchPoly 
         """
         # FIXME currently we assume that x is a batch of vectors i.e dim(x) = (batch X x_dim)
         assert len(x.size()) == 1, \
@@ -66,6 +71,10 @@ class Basis:
 
     @staticmethod
     def rbf():
+        # IMP : http://www.cs.toronto.edu/~mbrubake/teaching/C11/Handouts/NonlinearRegression.pdf
+        # https://medium.com/analytics-vidhya/nonlinear-regression-tutorial-with-radial-basis-functions-cdb7650104e7
+        # https://www.chadvernon.com/blog/rbf/
+        # https://elcorto.github.io/pwtools/written/background/rbf.html
         pass
 
     # http://mlg.eng.cam.ac.uk/pub/pdf/Ras04.pdf

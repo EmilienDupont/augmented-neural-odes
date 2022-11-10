@@ -113,15 +113,13 @@ if __name__ == '__main__':
     epoch = None
     start_time = datetime.datetime.now()
     batch_size = configs_['train']['batch_size']
-    total_nfe = 0
-
+    forward_call_count = 0
     for epoch in tqdm(range(1, configs_['train']['n_epochs'] + 1), desc="Epochs"):
         batch_losses = []
         for batch_idx, (X, Y) in enumerate(train_dataloader_):
             optimizer.zero_grad()
             Y_pred = model_(X)
-            if isinstance(model_, (ODENet, TensorODEBLOCK)):
-                total_nfe += model_.get_nfe()
+            forward_call_count += 1
             loss = loss_fn(Y_pred, Y)
             loss.backward()
             optimizer.step()
@@ -139,12 +137,19 @@ if __name__ == '__main__':
                 Rolling average loss = {rolling_avg_loss} <= 
                 loss_threshold = {configs_['train']['loss_threshold']}""")
             break
+    if isinstance(model_, TensorODEBLOCK):
+        logger.info(f'for TODE model : \n'
+                    f'P = {model_.get_P()}\n'
+                    f'F = {model_.get_F()}\n'
+                    f'M = {model_.get_M()}\n')
     end_time = datetime.datetime.now()
     training_time = end_time - start_time
+    total_nfe = model_.get_nfe() if isinstance(model_, (ODENet, TensorODEBLOCK)) else None
+    # avg_nfe = float(model_.get_nfe())/forward_call_count if isinstance(model_, (ODENet, TensorODEBLOCK)) else None
     logger.info(
-        f'final epoch loss = {epochs_loss_history[-1]} at epoch = {epoch} , '
-        f'training time = {training_time.seconds} seconds '
-        f'nfe/sample = {float(total_nfe) / (epoch * batch_size)}')
+        f'final epoch loss = {epochs_loss_history[-1]} at epoch = {epoch}\n'
+        f'training time = {training_time.seconds} seconds\n'
+        f'total_nfe(@num_epochs={epoch}) = {total_nfe}\n')
 
     del loss
     del epochs_loss_history

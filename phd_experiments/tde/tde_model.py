@@ -11,7 +11,7 @@ from phd_experiments.torch_ode.torch_rk45 import TorchRK45
 class TensorODEBLOCK(torch.nn.Module):
     NON_LINEARITIES = {'relu': torch.nn.ReLU(), 'sigmoid': torch.nn.Sigmoid(), 'tanh': torch.nn.Tanh()}
     BASIS = ['None', 'poly', 'trig']
-    FORWARD_IMPL = ['batch_torch', 'single_torch', 'torchdiffeq', 'scipy']
+    FORWARD_IMPL = ['gen_linear_const', 'gen_linear_tvar', 'batch_torch', 'single_torch', 'torchdiffeq', 'scipy']
 
     def __init__(self, input_dimensions: List[int], output_dimensions: List[int],
                  tensor_dimensions: List[int], basis_str: str, t_span: Tuple, non_linearity: None | str = None,
@@ -72,11 +72,6 @@ class TensorODEBLOCK(torch.nn.Module):
             M_dims.extend(tensor_dimensions.copy())
             M_dims.append(2)  # sin and cos
 
-        # assert len(U_sizes) % 2 == 0, "U sizes must be odd"
-        # F_dimension
-        # Tensor param dims
-
-        # P_dimensions
         P_dims = input_dimensions.copy()
         P_dims.extend(tensor_dimensions.copy())
         assert len(P_dims) == 2, "No support for proejct matrix P with dims > 2 , yet !"
@@ -85,20 +80,15 @@ class TensorODEBLOCK(torch.nn.Module):
         self.P = torch.nn.Parameter(torch.distributions.Uniform(low=0.01, high=1.0).sample(sample_shape=P_dims),
                                     requires_grad=True)
         self.M = torch.nn.Parameter(
-            torch.distributions.Uniform(low=0.01, high=1.0).sample(sample_shape=M_dims), requires_grad=False)
+            torch.distributions.Uniform(low=0.01, high=1.0).sample(sample_shape=M_dims), requires_grad=True)
         self.F = torch.nn.Parameter(torch.distributions.Uniform(low=0.01, high=1.0).sample(sample_shape=F_dims),
-                                    requires_grad=False)
+                                    requires_grad=True)
 
         # Create solver
         assert t_span[0] < t_span[1], "t_span[0] must be < t_span[1]"
         if t_eval is not None:
             assert t_eval[0] >= t_span[0] and t_eval[1] <= t_span[1], "t_eval must be subset of t_span ranges"
-        self.monitor = {'U': [self.M], 'P': [self.P], 'F': [self.F]}
-
-    # TODO
-    @staticmethod
-    def params_check(input_dims: List[int], output_dims: List[int]):
-        pass
+        self.monitor = {'M': [self.M], 'P': [self.P], 'F': [self.F]}
 
     def forward(self, x: torch.Tensor):
         """
@@ -115,7 +105,7 @@ class TensorODEBLOCK(torch.nn.Module):
         """
         # Record parameters for monitoring
 
-        self.monitor['U'].append(torch.clone(self.M).detach())
+        self.monitor['M'].append(torch.clone(self.M).detach())
         self.monitor['P'].append(torch.clone(self.P).detach())
         self.monitor['F'].append(torch.clone(self.F).detach())
 
@@ -133,6 +123,13 @@ class TensorODEBLOCK(torch.nn.Module):
         return y_hat
 
     def forward_impl(self, A0: torch.Tensor) -> torch.Tensor:
+        if self.forward_impl_method == 'gen_linear_const':
+            """
+            https://www.stat.uchicago.edu/~lekheng/work/mcsc2.pdf 
+            https://en.wikipedia.org/wiki/Matrix_differential_equation#:~:text=A%20matrix%20differential%20equation%20contains,the%20functions%20to%20their%20derivatives. 
+            https://people.math.wisc.edu/~angenent/519.2016s/notes/linear-systems-homogeneous.html
+            """
+            pass
         if self.forward_impl_method == 'batch_torch':
             torch_solver = TorchRK45(device=torch.device('cpu'), tensor_dtype=self.tensor_dtype, is_batch=True)
             A_f = torch_solver.solve_ivp(func=self.ode_f, t_span=self.t_span, z0=A0,
@@ -211,7 +208,7 @@ class TensorODEBLOCK(torch.nn.Module):
                 C_contract_dims = list(range(len(C.size())))[-len(A_contract_dims):]
 
             else:
-                raise ValueError(f'forward_impl_method {self.forward_impl_method} is not supported, must be one of '
+                raise ValueError(f'forward_impl_method {self.forward_impl_methfod} is not supported, must be one of '
                                  f'= {TensorODEBLOCK.FORWARD_IMPL}')
             dAdt = torch.tensordot(a=A, b=C, dims=[A_contract_dims, C_contract_dims])
 
@@ -237,3 +234,12 @@ class TensorODEBLOCK(torch.nn.Module):
 
     def get_nfe(self):
         return self.nfe
+
+    def get_F(self):
+        return self.F
+
+    def get_P(self):
+        return self.P
+
+    def get_M(self):
+        return self.M
