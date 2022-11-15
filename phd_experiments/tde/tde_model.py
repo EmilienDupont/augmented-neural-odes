@@ -29,6 +29,9 @@ class TensorODEBLOCK(torch.nn.Module):
         self.t_span = t_span
         self.nfe = 0
         # assert parameters
+        assert len(input_dimensions) == 1, " Supporting input vectors only"
+        assert len(output_dimensions) == 1, " Supporting output vectors only"
+        assert len(tensor_dimensions) == 1, "Supporting vector higher dimension latents only"
         if non_linearity and non_linearity not in TensorODEBLOCK.NON_LINEARITIES.keys():
             raise ValueError(
                 f'Non-linearity {self.non_linearity} not supported : must be one of '
@@ -63,10 +66,11 @@ class TensorODEBLOCK(torch.nn.Module):
             M_dims.extend(tensor_dimensions.copy())
             # C_dim.append(1) # time
         elif self.basis_fn == 'poly':
-            D = int(np.prod(self.tensor_dimensions))
-            assert isinstance(D, int)  # used as repeats
+            # assume inputs / outputs are vectors (batches of vectors)
+
             M_dims = tensor_dimensions.copy()  # the output is the projected latent A
-            M_dims.extend(list(np.repeat(a=int(int(self.basis_params['dim']) + 1), repeats=D + 1)))  # +1 for time
+            M_dims.extend(list(np.repeat(a=int(int(self.basis_params['dim']) + 1), # +1 for const-term
+                                         repeats=self.input_dimensions[0] + 1)))  # +1 for time
         elif self.basis_fn == 'trig':
             M_dims = tensor_dimensions.copy()
             M_dims.extend(tensor_dimensions.copy())
@@ -213,13 +217,13 @@ class TensorODEBLOCK(torch.nn.Module):
             dAdt = torch.tensordot(a=A, b=C, dims=[A_contract_dims, C_contract_dims])
 
         elif basis_fn == 'poly':
-            A_basis = Basis.poly(x=A, t=t, poly_dim=basis_params['dim'])
-            dAdt = TensorODEBLOCK.tensor_contract(C, A_basis)
+            Phi = Basis.poly(x=A, t=t, poly_dim=basis_params['dim'])
+            dAdt = TensorODEBLOCK.tensor_contract(C, Phi)
         elif basis_fn == 'trig':
-            A_basis = Basis.trig(A, t, float(basis_params['a']), float(basis_params['b']), float(basis_params['c']))
+            Phi = Basis.trig(A, t, float(basis_params['a']), float(basis_params['b']), float(basis_params['c']))
             U_contract_dims = list(range(len(self.tensor_dimensions), len(C.size())))
-            A_contract_dims = list(range(1, len(A_basis.size())))
-            dAdt = torch.tensordot(A_basis, C, dims=(A_contract_dims, U_contract_dims))
+            A_contract_dims = list(range(1, len(Phi.size())))
+            dAdt = torch.tensordot(Phi, C, dims=(A_contract_dims, U_contract_dims))
         else:
             raise ValueError(f"basis_fn : {basis_fn} is not supported : must be {TensorODEBLOCK.BASIS}")
 

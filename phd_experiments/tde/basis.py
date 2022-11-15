@@ -23,35 +23,28 @@ class Basis:
         pass
 
     @staticmethod
-    def poly(x: torch.Tensor, t: float, poly_dim: int) -> Tensor:
+    def poly(x: torch.Tensor, t: float, poly_dim: int) -> List[Tensor]:
         """
-        x : tensor of shape B x d1 x d2 x ... x dm : where m is the order of the tensor
-        where B is batch size
-         let D = d1xd2x...dm
+        x : tensor of shape B x Dx
         P : degrees of basis polynomial
-        t : time value
-        return  : Tensor of B x (x_dim+1) x (poly_dim) . x_dim + 1 because of time augmentation
+        t : time value # FIXME ignored for now
+        return  : Tensor of List of tensor of shape Bx(poly_dim + 1)
         """
         """
         https://github.com/goroda/PyTorchPoly 
         """
-        # FIXME currently we assume that x is a batch of vectors i.e dim(x) = (batch X x_dim)
-        assert len(x.size()) == 1, \
-            "For now : we assume that the input to poly basis is a vector"
-        B = list(x.size())[0]
-        # t_tensor = torch.tensor(np.repeat(t, B), dtype=x.dtype).view(-1, 1)
-        # x_flat = torch.flatten(x, start_dim=1)
-        # # assert x_flat.requires_grad, "After flatten requires grad = False"
-        x_aug = torch.cat(tensors=[x.T.view(1, -1), torch.tensor([t],dtype=x.dtype).view(1, 1)], dim=1)
-        # x_pow = torch.clone(x_aug)
-        x_poly_list = []
-        for p in range(poly_dim + 1):
-            x_pow = torch.pow(x_aug, p)
-            x_poly_list.append(x_pow)
-        x_basis = torch.concat(tensors=x_poly_list, dim=0)
-        assert len(x_basis.size()) == 2, "For now : we assume that poly basis should return order-2 tensor" \
-                                         "s.t. dim(x_basis) = (poly_dim+1) * (x_dim +1 ) "
-        return x_basis
+        """
+            x : torch.Tensor of size Batch x dim
+            """
+        assert isinstance(x, torch.Tensor)
+        assert len(x.size()) == 2, "Supporting poly-basis generation for only torch-vectors"
+        B = x.size()[0]
+        x = torch.cat([x, torch.tensor(t, dtype=x.dtype).repeat(B).view(-1, 1)], dim=1)
+        pow_tensors = [torch.ones(x.size()), x]
+        for deg in range(2, poly_dim + 1):
+            pow_tensors.append(torch.pow(x, deg))
+        Phi = list(torch.permute(input=torch.stack(tensors=pow_tensors, dim=0), dims=[2, 1, 0]))
+        return Phi
 
     @staticmethod
     def trig(x: torch.Tensor, t: float, a: float, b: float, c: float):
