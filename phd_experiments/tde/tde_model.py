@@ -1,11 +1,16 @@
 from typing import List, Tuple, Callable
 
 import numpy as np
+import scipy
 import torch
 from torch import vmap
+from torchdiffeq import odeint
+
 # https://pytorch.org/tutorials/prototype/vmap_recipe.html
 from phd_experiments.tde.basis import Basis
+from phd_experiments.tde.misc import func_tensors_contract
 from phd_experiments.torch_ode.torch_rk45 import TorchRK45
+from scipy.integrate import solve_ivp
 
 
 class TensorODEBLOCK(torch.nn.Module):
@@ -56,7 +61,7 @@ class TensorODEBLOCK(torch.nn.Module):
         if basis_[0] == 'None':
             self.basis_params = None
         if basis_[0] == 'poly':
-            self.basis_params = {'dim': int(basis_[1])}
+            self.basis_params = {'deg': int(basis_[1])}
         elif basis_[0] == 'trig':
             self.basis_params = {'a': basis_[1], 'b': basis_[2], 'c': basis_[3]}
 
@@ -69,8 +74,8 @@ class TensorODEBLOCK(torch.nn.Module):
             # assume inputs / outputs are vectors (batches of vectors)
 
             M_dims = tensor_dimensions.copy()  # the output is the projected latent A
-            M_dims.extend(list(np.repeat(a=int(int(self.basis_params['dim']) + 1), # +1 for const-term
-                                         repeats=self.input_dimensions[0] + 1)))  # +1 for time
+            M_dims.extend(list(np.repeat(a=int(int(self.basis_params['deg'] + 1)),  # +1 for const-term
+                                         repeats=self.tensor_dimensions[0] + 1)))  # +1 for time
         elif self.basis_fn == 'trig':
             M_dims = tensor_dimensions.copy()
             M_dims.extend(tensor_dimensions.copy())
@@ -78,14 +83,14 @@ class TensorODEBLOCK(torch.nn.Module):
 
         P_dims = input_dimensions.copy()
         P_dims.extend(tensor_dimensions.copy())
-        assert len(P_dims) == 2, "No support for proejct matrix P with dims > 2 , yet !"
+        assert len(P_dims) == 2, "No support for the projection tensor P with n_dims > 2 , yet !"
         F_dims = tensor_dimensions.copy()
         F_dims.extend(output_dimensions.copy())
-        self.P = torch.nn.Parameter(torch.distributions.Uniform(low=0.01, high=1.0).sample(sample_shape=P_dims),
+        self.P = torch.nn.Parameter(torch.distributions.Uniform(low=0.1, high=0.5).sample(sample_shape=P_dims),
                                     requires_grad=True)
         self.M = torch.nn.Parameter(
-            torch.distributions.Uniform(low=0.01, high=1.0).sample(sample_shape=M_dims), requires_grad=True)
-        self.F = torch.nn.Parameter(torch.distributions.Uniform(low=0.01, high=1.0).sample(sample_shape=F_dims),
+            torch.distributions.Uniform(low=0.1, high=0.5).sample(sample_shape=M_dims), requires_grad=True)
+        self.F = torch.nn.Parameter(torch.distributions.Uniform(low=0.1, high=0.5).sample(sample_shape=F_dims),
                                     requires_grad=True)
 
         # Create solver
@@ -136,6 +141,8 @@ class TensorODEBLOCK(torch.nn.Module):
             pass
         if self.forward_impl_method == 'batch_torch':
             torch_solver = TorchRK45(device=torch.device('cpu'), tensor_dtype=self.tensor_dtype, is_batch=True)
+            func_ = lambda t, A: self.ode_f(t, A, self.M, basis_fn='poly', basis_params={'deg': 1})
+            # A_f = odeint(func=func_, t=torch.tensor([0.0, 1.0]), y0=A0)
             A_f = torch_solver.solve_ivp(func=self.ode_f, t_span=self.t_span, z0=A0,
                                          args=(self.M, self.basis_fn, self.basis_params)).zf
             return A_f
@@ -162,20 +169,6 @@ class TensorODEBLOCK(torch.nn.Module):
         else:
             raise ValueError(f"forward_impl_method {self.forward_impl_method} not supported, "
                              f"must be one of {TensorODEBLOCK.FORWARD_IMPL}")
-
-    @staticmethod
-    def tensor_contract(C: torch.Tensor, A_basis: torch.Tensor) -> torch.Tensor:
-        A_basis_dims = A_basis.size()
-        assert len(A_basis_dims) == 2, "Assume A basis dims = (poly_dim + 1) X (x_dim+1)"
-        n_basis = list(A_basis.size())[1]
-        c_n_dims = len(C.size())
-        c_contract_dims = list(range(c_n_dims))[-n_basis:]
-        assert len(c_contract_dims) == n_basis, "num of contract dims in must = num_basis"
-        res = C
-        res_contract_dim = list(range(len(C.size())))[-n_basis]
-        for j in range(n_basis):
-            res = torch.tensordot(a=res, b=A_basis[:, j], dims=([res_contract_dim], [0]))
-        return res
 
     def ode_f(self, t: float, A: torch.Tensor, C: torch.Tensor, basis_fn: str, basis_params: dict):
         # TODO batched dot (what we need)
@@ -217,8 +210,11 @@ class TensorODEBLOCK(torch.nn.Module):
             dAdt = torch.tensordot(a=A, b=C, dims=[A_contract_dims, C_contract_dims])
 
         elif basis_fn == 'poly':
-            Phi = Basis.poly(x=A, t=t, poly_dim=basis_params['dim'])
-            dAdt = TensorODEBLOCK.tensor_contract(C, Phi)
+            Phi = Basis.poly(x=A, t=t, poly_deg=basis_params['deg'])
+            # print(A)
+            dAdt = func_tensors_contract(C=C, Phi=Phi)
+
+            # print(t)
         elif basis_fn == 'trig':
             Phi = Basis.trig(A, t, float(basis_params['a']), float(basis_params['b']), float(basis_params['c']))
             U_contract_dims = list(range(len(self.tensor_dimensions), len(C.size())))

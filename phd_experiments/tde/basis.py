@@ -23,7 +23,7 @@ class Basis:
         pass
 
     @staticmethod
-    def poly(x: torch.Tensor, t: float, poly_dim: int) -> List[Tensor]:
+    def poly(x: torch.Tensor, t: float, poly_deg: int) -> List[Tensor]:
         """
         x : tensor of shape B x Dx
         P : degrees of basis polynomial
@@ -40,8 +40,8 @@ class Basis:
         assert len(x.size()) == 2, "Supporting poly-basis generation for only torch-vectors"
         B = x.size()[0]
         x = torch.cat([x, torch.tensor(t, dtype=x.dtype).repeat(B).view(-1, 1)], dim=1)
-        pow_tensors = [torch.ones(x.size()), x]
-        for deg in range(2, poly_dim + 1):
+        pow_tensors = [torch.ones(x.size()), x] # to the power 0 and 1
+        for deg in range(2, poly_deg + 1):
             pow_tensors.append(torch.pow(x, deg))
         Phi = list(torch.permute(input=torch.stack(tensors=pow_tensors, dim=0), dims=[2, 1, 0]))
         return Phi

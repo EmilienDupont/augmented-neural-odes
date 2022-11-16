@@ -1,15 +1,20 @@
-8 Nov 2022
-
+16 Nov 2022
+=======================
 break training if loss < 1e-4 or till epochs =200
 Data            Model           Finalloss(Smooth1loss)      Running-time(seconds)       n-epochs      nfe@n_epochs
 flip1d          ResNet          9e-5                        5                           56/200          None
 flip1d          NODE            0.5                         47                          200/200         50
 flip1d          ANODE           6e-7                        3                           18/200          20
-flip1d          TODE(no-basis)  3e-11                       3                           27/200          9072
+flip1d          TODE(poly-1)    1e-5                        25                          108/200         37698
 conc-sphere     ResNet          5e-5                        12                          182/200         None
 conc-sphere     Node            4e-4                        31                          200/200         32
 conc-sphere     Anode           1.3e-4                      25                          200/200         26
-conc-sphere     TODE(no-basis)  0.5                         11                          200/200         47388
+conc-sphere     TODE(poly-1)    0.5                         11                          200/200         47388
+
+Notes :
+1- TODE with poly-1 is unstable, sometimes it stucks
+2- with poly_deg > 1, the code stucks
+3- TODE  nfe is unreasonable
 
 ========================================================
 29 Sep 2022

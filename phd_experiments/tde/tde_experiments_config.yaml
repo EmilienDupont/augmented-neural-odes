@@ -55,7 +55,7 @@ tode: # tensor ode
   # dimensions
   # if input is a 3D tensor (colored) image -> tensor dims will be for order-3 tensor with higher dimensions
   non_linearity: None
-  basis: None # poly, dim or trig , a,b,c
+  basis: poly,1 # poly, dim or trig , a,b,c
   t_span: [ 0,1 ]
   forward_impl_method: "batch_torch"
 
