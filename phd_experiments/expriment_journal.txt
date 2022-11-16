@@ -1,11 +1,15 @@
 16 Nov 2022
 =======================
 break training if loss < 1e-4 or till epochs =200
-Data            Model           Finalloss(Smooth1loss)      Running-time(seconds)       n-epochs      nfe@n_epochs
+Data            Model           Finalloss(Smooth1loss)      Running-time(seconds)       n-epochs        nfe@n_epochs
 flip1d          ResNet          9e-5                        5                           56/200          None
 flip1d          NODE            0.5                         47                          200/200         50
 flip1d          ANODE           6e-7                        3                           18/200          20
-flip1d          TODE(poly-1)    1e-5                        25                          108/200         37698
+flip1d          TODE(poly-1)    1e-5                        9                           46/200          20892
+                mytorch
+flip1d          TODE(poly-1)    5e-11                       41                          50/200          75868
+                torchdiffeq
+
 conc-sphere     ResNet          5e-5                        12                          182/200         None
 conc-sphere     Node            4e-4                        31                          200/200         32
 conc-sphere     Anode           1.3e-4                      25                          200/200         26

@@ -101,6 +101,8 @@ if __name__ == '__main__':
     with open(args.config) as f:
         configs_ = yaml.load(stream=f, Loader=yaml.FullLoader)
     logger.info(f"""Experimenting with model {configs_['model-name']} and dataset {configs_['dataset-name']}""")
+    if configs_['model-name'] == 'tode':
+        logger.info(f"""Forward-Integration method is : {configs_[configs_['model-name']]['forward_impl_method']}""")
     model_ = get_model(configs=configs_)
     train_dataloader_, test_dataloader_ = get_data_loader(dataset_name=configs_['dataset-name'], configs=configs_)
     loss_fn = get_loss(loss_name=configs_['train']['loss'])

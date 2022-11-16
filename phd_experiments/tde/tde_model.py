@@ -16,7 +16,7 @@ from scipy.integrate import solve_ivp
 class TensorODEBLOCK(torch.nn.Module):
     NON_LINEARITIES = {'relu': torch.nn.ReLU(), 'sigmoid': torch.nn.Sigmoid(), 'tanh': torch.nn.Tanh()}
     BASIS = ['None', 'poly', 'trig']
-    FORWARD_IMPL = ['gen_linear_const', 'gen_linear_tvar', 'batch_torch', 'single_torch', 'torchdiffeq', 'scipy']
+    FORWARD_IMPL = ['gen_linear_const', 'gen_linear_tvar', 'mytorch', 'single_torch', 'torchdiffeq', 'scipy']
 
     def __init__(self, input_dimensions: List[int], output_dimensions: List[int],
                  tensor_dimensions: List[int], basis_str: str, t_span: Tuple, non_linearity: None | str = None,
@@ -132,6 +132,7 @@ class TensorODEBLOCK(torch.nn.Module):
         return y_hat
 
     def forward_impl(self, A0: torch.Tensor) -> torch.Tensor:
+        A_f = None
         if self.forward_impl_method == 'gen_linear_const':
             """
             https://www.stat.uchicago.edu/~lekheng/work/mcsc2.pdf 
@@ -139,13 +140,10 @@ class TensorODEBLOCK(torch.nn.Module):
             https://people.math.wisc.edu/~angenent/519.2016s/notes/linear-systems-homogeneous.html
             """
             pass
-        if self.forward_impl_method == 'batch_torch':
+        elif self.forward_impl_method == 'mytorch':
             torch_solver = TorchRK45(device=torch.device('cpu'), tensor_dtype=self.tensor_dtype, is_batch=True)
-            func_ = lambda t, A: self.ode_f(t, A, self.M, basis_fn='poly', basis_params={'deg': 1})
-            # A_f = odeint(func=func_, t=torch.tensor([0.0, 1.0]), y0=A0)
             A_f = torch_solver.solve_ivp(func=self.ode_f, t_span=self.t_span, z0=A0,
                                          args=(self.M, self.basis_fn, self.basis_params)).zf
-            return A_f
         elif self.forward_impl_method == 'single_torch':
             # A0 is a single sample in the Bx dim(A0) batch of samples
             # FIXME tried vmap but didn't work for batch solve
@@ -165,10 +163,14 @@ class TensorODEBLOCK(torch.nn.Module):
                                                        args=(self.M, self.basis_fn, self.basis_params)).zf
             # FIXME Warning ! slow slow slow
             A_f = torch.stack([solve_(A0[b, :]) for b in range(batch_size)], dim=0)
-            return A_f
+
+        elif self.forward_impl_method == 'torchdiffeq':
+            func_ = lambda t, A: self.ode_f(t, A, self.M, basis_fn='poly', basis_params={'deg': 1})
+            A_f = odeint(func=func_, t=torch.tensor([0.0, 1.0]), y0=A0)[-1, :]
         else:
             raise ValueError(f"forward_impl_method {self.forward_impl_method} not supported, "
                              f"must be one of {TensorODEBLOCK.FORWARD_IMPL}")
+        return A_f
 
     def ode_f(self, t: float, A: torch.Tensor, C: torch.Tensor, basis_fn: str, basis_params: dict):
         # TODO batched dot (what we need)

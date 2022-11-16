@@ -57,5 +57,5 @@ tode: # tensor ode
   non_linearity: None
   basis: poly,1 # poly, dim or trig , a,b,c
   t_span: [ 0,1 ]
-  forward_impl_method: "batch_torch"
+  forward_impl_method: "torchdiffeq"
 
