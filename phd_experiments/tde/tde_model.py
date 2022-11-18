@@ -86,11 +86,14 @@ class TensorODEBLOCK(torch.nn.Module):
         assert len(P_dims) == 2, "No support for the projection tensor P with n_dims > 2 , yet !"
         F_dims = tensor_dimensions.copy()
         F_dims.extend(output_dimensions.copy())
-        self.P = torch.nn.Parameter(torch.distributions.Uniform(low=0.1, high=0.5).sample(sample_shape=P_dims),
+
+        # initialize model parameters
+        ulow, uhigh = 1e-7, 1e-5
+        self.P = torch.nn.Parameter(torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=P_dims),
                                     requires_grad=True)
         self.M = torch.nn.Parameter(
-            torch.distributions.Uniform(low=0.1, high=0.5).sample(sample_shape=M_dims), requires_grad=True)
-        self.F = torch.nn.Parameter(torch.distributions.Uniform(low=0.1, high=0.5).sample(sample_shape=F_dims),
+            torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=M_dims), requires_grad=True)
+        self.F = torch.nn.Parameter(torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=F_dims),
                                     requires_grad=True)
 
         # Create solver
@@ -165,8 +168,8 @@ class TensorODEBLOCK(torch.nn.Module):
             A_f = torch.stack([solve_(A0[b, :]) for b in range(batch_size)], dim=0)
 
         elif self.forward_impl_method == 'torchdiffeq':
-            func_ = lambda t, A: self.ode_f(t, A, self.M, basis_fn='poly', basis_params={'deg': 1})
-            A_f = odeint(func=func_, t=torch.tensor([0.0, 1.0]), y0=A0)[-1, :]
+            func_ = lambda t, A: self.ode_f(t, A, self.M, basis_fn='poly', basis_params=self.basis_params)
+            A_f = odeint(func=func_, t=torch.tensor([0.0, 1.0]), y0=A0, rtol=1e-5, atol=1e-8)[-1, :]
         else:
             raise ValueError(f"forward_impl_method {self.forward_impl_method} not supported, "
                              f"must be one of {TensorODEBLOCK.FORWARD_IMPL}")
@@ -213,10 +216,8 @@ class TensorODEBLOCK(torch.nn.Module):
 
         elif basis_fn == 'poly':
             Phi = Basis.poly(x=A, t=t, poly_deg=basis_params['deg'])
-            # print(A)
             dAdt = func_tensors_contract(C=C, Phi=Phi)
-
-            # print(t)
+            # print(C,t)
         elif basis_fn == 'trig':
             Phi = Basis.trig(A, t, float(basis_params['a']), float(basis_params['b']), float(basis_params['c']))
             U_contract_dims = list(range(len(self.tensor_dimensions), len(C.size())))

@@ -78,7 +78,7 @@ class TorchRK45(TorchODESolver):
 
             z, f, h, t = TorchRK45._torch_rk_step_adaptive_step(func=func, t=t, tf=tf, z=z, f=f, h=h, A=self.A,
                                                                 B=self.B, C=self.C, K=self.K, E=self.E, atol=self.atol,
-                                                                rtol=self.rtol,is_batch=self.is_batch)
+                                                                rtol=self.rtol, is_batch=self.is_batch)
 
             if abs(t - tf) < 1e-4:
                 finished = True
@@ -122,7 +122,7 @@ class TorchRK45(TorchODESolver):
         t_new = None
         while not step_accepted:
             if h < min_step:
-                h = min_step  # hack to keep going
+                raise ValueError(f'h={h} < min_step = {min_step}. Cannot complete the integration, exiting!!!')
             t_new = t + h
 
             t_new = min(t_new, tf)

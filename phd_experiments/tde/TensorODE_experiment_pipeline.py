@@ -116,13 +116,16 @@ if __name__ == '__main__':
     start_time = datetime.datetime.now()
     batch_size = configs_['train']['batch_size']
     forward_call_count = 0
+    lambda_ = configs_[configs_['model-name']]['lambda'] if configs_['model-name'] == 'tode' else 0
     for epoch in tqdm(range(1, configs_['train']['n_epochs'] + 1), desc="Epochs"):
         batch_losses = []
         for batch_idx, (X, Y) in enumerate(train_dataloader_):
             optimizer.zero_grad()
             Y_pred = model_(X)
             forward_call_count += 1
-            loss = loss_fn(Y_pred, Y)
+            reg_term = lambda_ * torch.norm(model_.get_M()) if isinstance(model_,TensorODEBLOCK) else \
+                torch.tensor([0.0])
+            loss = loss_fn(Y_pred, Y) + reg_term
             loss.backward()
             optimizer.step()
             batch_losses.append(loss.item())
@@ -152,9 +155,3 @@ if __name__ == '__main__':
         f'final epoch loss = {epochs_loss_history[-1]} at epoch = {epoch}\n'
         f'training time = {training_time.seconds} seconds\n'
         f'total_nfe(@num_epochs={epoch}) = {total_nfe}\n')
-
-    del loss
-    del epochs_loss_history
-    del batch_losses
-    del model_
-    del train_dataloader_

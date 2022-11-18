@@ -1,5 +1,6 @@
-16 Nov 2022
+18 Nov 2022
 =======================
+**Successfull runs**
 break training if loss < 1e-4 or till epochs =200
 Data            Model           Finalloss(Smooth1loss)      Running-time(seconds)       n-epochs        nfe@n_epochs
 flip1d          ResNet          9e-5                        5                           56/200          None
@@ -9,12 +10,66 @@ flip1d          TODE(poly-1)    1e-5                        9                   
                 mytorch
 flip1d          TODE(poly-1)    5e-11                       41                          50/200          75868
                 torchdiffeq
-
 conc-sphere     ResNet          5e-5                        12                          182/200         None
 conc-sphere     Node            4e-4                        31                          200/200         32
 conc-sphere     Anode           1.3e-4                      25                          200/200         26
 conc-sphere     TODE(poly-1)    0.5                         11                          200/200         47388
 
+
+**Failed Runs**
+1) TODE-flip1d-poly=2-mytorch
+INFO:root:Experimenting with model tode and dataset flip1d
+INFO:root:Forward-Integration method is : mytorch
+INFO:root:Starting training with n_epochs = 200,loss_threshold 1e-4 and init loss = inf
+Epochs:   0%|          | 0/200 [00:00<?, ?it/s]/home/mbaddar/phd/augmented-neural-odes/phd_experiments/torch_ode/torch_rk45.py:99: UserWarning: The use of `x.T` on tensors of dimension other than 2 to reverse their shape is deprecated and it will throw an error in a future release. Consider `x.mT` to transpose batches of matrices or `x.permute(*torch.arange(x.ndim - 1, -1, -1))` to reverse the dimensions of a tensor. (Triggered internally at /opt/conda/conda-bld/pytorch_1667286755372/work/aten/src/ATen/native/TensorShape.cpp:3494.)
+  dz = torch.matmul(K[:s].T, a[:s]) * h
+/home/mbaddar/phd/augmented-neural-odes/phd_experiments/tde/basis.py:42: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.clone().detach() or sourceTensor.clone().detach().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  x = torch.cat([x, torch.tensor(t, dtype=x.dtype).repeat(B).view(-1, 1)], dim=1)
+Epochs:   0%|          | 0/200 [00:00<?, ?it/s]
+Traceback (most recent call last):
+  File "/home/mbaddar/phd/augmented-neural-odes/phd_experiments/tde/TensorODE_experiment_pipeline.py", line 123, in <module>
+    Y_pred = model_(X)
+  File "/home/mbaddar/anaconda3/envs/venv310/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1423, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/mbaddar/phd/augmented-neural-odes/phd_experiments/tde/tde_model.py", line 128, in forward
+    A_f = self.forward_impl(A0=A0)
+  File "/home/mbaddar/phd/augmented-neural-odes/phd_experiments/tde/tde_model.py", line 145, in forward_impl
+    A_f = torch_solver.solve_ivp(func=self.ode_f, t_span=self.t_span, z0=A0,
+  File "/home/mbaddar/phd/augmented-neural-odes/phd_experiments/torch_ode/torch_rk45.py", line 79, in solve_ivp
+    z, f, h, t = TorchRK45._torch_rk_step_adaptive_step(func=func, t=t, tf=tf, z=z, f=f, h=h, A=self.A,
+  File "/home/mbaddar/phd/augmented-neural-odes/phd_experiments/torch_ode/torch_rk45.py", line 125, in _torch_rk_step_adaptive_step
+    raise ValueError(f'h={h} < min_step = {min_step}. Cannot complete the integration, exiting!!!')
+ValueError: h=7.549516567451065e-16 < min_step = 1.1102230246251565e-15. Cannot complete the integration, exiting!!!
+2) TODE-flip1d-poly=2-torchdiffeq
+
+INFO:root:Experimenting with model tode and dataset flip1d
+INFO:root:Forward-Integration method is : torchdiffeq
+INFO:root:Starting training with n_epochs = 200,loss_threshold 1e-4 and init loss = inf
+Epochs:   0%|          | 0/200 [00:00<?, ?it/s]/home/mbaddar/phd/augmented-neural-odes/phd_experiments/tde/basis.py:42: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.clone().detach() or sourceTensor.clone().detach().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  x = torch.cat([x, torch.tensor(t, dtype=x.dtype).repeat(B).view(-1, 1)], dim=1)
+Epochs:   0%|          | 0/200 [00:00<?, ?it/s]
+Traceback (most recent call last):
+  File "/home/mbaddar/phd/augmented-neural-odes/phd_experiments/tde/TensorODE_experiment_pipeline.py", line 123, in <module>
+    Y_pred = model_(X)
+  File "/home/mbaddar/anaconda3/envs/venv310/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1423, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/mbaddar/phd/augmented-neural-odes/phd_experiments/tde/tde_model.py", line 128, in forward
+    A_f = self.forward_impl(A0=A0)
+  File "/home/mbaddar/phd/augmented-neural-odes/phd_experiments/tde/tde_model.py", line 169, in forward_impl
+    A_f = odeint(func=func_, t=torch.tensor([0.0, 1.0]), y0=A0)[-1, :]
+  File "/home/mbaddar/anaconda3/envs/venv310/lib/python3.10/site-packages/torchdiffeq/_impl/odeint.py", line 77, in odeint
+    solution = solver.integrate(t)
+  File "/home/mbaddar/anaconda3/envs/venv310/lib/python3.10/site-packages/torchdiffeq/_impl/solvers.py", line 30, in integrate
+    solution[i] = self._advance(t[i])
+  File "/home/mbaddar/anaconda3/envs/venv310/lib/python3.10/site-packages/torchdiffeq/_impl/rk_common.py", line 194, in _advance
+    self.rk_state = self._adaptive_step(self.rk_state)
+  File "/home/mbaddar/anaconda3/envs/venv310/lib/python3.10/site-packages/torchdiffeq/_impl/rk_common.py", line 228, in _adaptive_step
+    assert t0 + dt > t0, 'underflow in dt {}'.format(dt.item())
+AssertionError: underflow in dt 5.2464331150993257e-17
+
+Exploding gradient problem
+https://machinelearningmastery.com/exploding-gradients-in-neural-networks/
+================================
 Notes :
 1- TODE with poly-1 is unstable, sometimes it stucks
 2- with poly_deg > 1, the code stucks
