@@ -1,19 +1,19 @@
 18 Nov 2022
 =======================
 **Successfull runs**
-break training if loss < 1e-4 or till epochs =200
+break training if loss < 1e-3 or till epochs =200
 Data            Model           Finalloss(Smooth1loss)      Running-time(seconds)       n-epochs        nfe@n_epochs
 flip1d          ResNet          9e-5                        5                           56/200          None
 flip1d          NODE            0.5                         47                          200/200         50
 flip1d          ANODE           6e-7                        3                           18/200          20
-flip1d          TODE(poly-1)    1e-5                        9                           46/200          20892
+flip1d          TODE(poly-3)    9-4                         19                          200/200         20892
                 mytorch
-flip1d          TODE(poly-1)    5e-11                       41                          50/200          75868
+flip1d          TODE(poly-3)    5e-11                       41                          50/200          75868
                 torchdiffeq
 conc-sphere     ResNet          5e-5                        12                          182/200         None
 conc-sphere     Node            4e-4                        31                          200/200         32
 conc-sphere     Anode           1.3e-4                      25                          200/200         26
-conc-sphere     TODE(poly-1)    0.5                         11                          200/200         47388
+conc-sphere     TODE(poly-3)    5e-3                        18                          200/200         23400 ??
 
 
 **Failed Runs**

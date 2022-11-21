@@ -6,18 +6,51 @@ import torch
 from torch import vmap
 from torchdiffeq import odeint
 
+from anode.models import ODEFunc
 # https://pytorch.org/tutorials/prototype/vmap_recipe.html
 from phd_experiments.tde.basis import Basis
 from phd_experiments.tde.misc import func_tensors_contract
 from phd_experiments.torch_ode.torch_rk45 import TorchRK45
-from scipy.integrate import solve_ivp
+
+class F(torch.nn.Module):
+    NON_LINEARITIES = ["relu", "sigmoid", "softplus"]
+
+    def __init__(self, input_dim, hidden_dim, out_dim, n_internal_layers=1, non_linearity='relu'):
+        super().__init__()
+        assert n_internal_layers >= 0, f"number of layers must >= 0, given n_internal_layers = {n_internal_layers}"
+        assert non_linearity in F.NON_LINEARITIES, f"non-linearities must be one of {F.NON_LINEARITIES} , " \
+                                                   f"given {non_linearity}"
+        assert non_linearity
+        self.out_dim = out_dim
+        self.input_dim = input_dim
+        self.fc_one = torch.nn.Linear(input_dim, out_dim)
+        self.fc_in = torch.nn.Linear(input_dim, hidden_dim)
+        self.fc_out = torch.nn.Linear(hidden_dim, out_dim)
+        self.layers = [torch.nn.Linear(hidden_dim, hidden_dim) for _ in range(n_internal_layers + 1)]
+        if non_linearity == "relu":
+            self.non_linearity = torch.nn.ReLU()
+        elif non_linearity == "softplus":
+            self.non_linearity = torch.nn.Softplus()
+        elif non_linearity == "sigmoid":
+            self.non_linearity = torch.nn.Sigmoid()
+        else:
+            raise ValueError(f"Unsupported non-linearity {non_linearity}")
+
+    def forward(self, x):
+        u = self.fc_in(x)
+        for layer in self.layers:
+            u = layer(u)
+            u = self.non_linearity(u)
+        out = self.fc_out(u)
+        return out
 
 
 class TensorODEBLOCK(torch.nn.Module):
     NON_LINEARITIES = {'relu': torch.nn.ReLU(), 'sigmoid': torch.nn.Sigmoid(), 'tanh': torch.nn.Tanh()}
     BASIS = ['None', 'poly', 'trig']
-    FORWARD_IMPL = ['gen_linear_const', 'gen_linear_tvar', 'mytorch', 'single_torch', 'torchdiffeq', 'scipy']
+    FORWARD_IMPL = ['mytorch', 'torchdiffeq', 'nn']
 
+    # FORWARD_IMPL = ['gen_linear_const', 'gen_linear_tvar', 'mytorch', 'single_torch', 'torchdiffeq', 'scipy','nn']
     def __init__(self, input_dimensions: List[int], output_dimensions: List[int],
                  tensor_dimensions: List[int], basis_str: str, t_span: Tuple, non_linearity: None | str = None,
                  t_eval: List = None, forward_impl_method: str = "batch_torch",
@@ -84,8 +117,9 @@ class TensorODEBLOCK(torch.nn.Module):
         P_dims = input_dimensions.copy()
         P_dims.extend(tensor_dimensions.copy())
         assert len(P_dims) == 2, "No support for the projection tensor P with n_dims > 2 , yet !"
-        F_dims = tensor_dimensions.copy()
-        F_dims.extend(output_dimensions.copy())
+
+        # F_dims = tensor_dimensions.copy()
+        # F_dims.extend(output_dimensions.copy())
 
         # initialize model parameters
         ulow, uhigh = 1e-7, 1e-5
@@ -93,8 +127,9 @@ class TensorODEBLOCK(torch.nn.Module):
                                     requires_grad=True)
         self.M = torch.nn.Parameter(
             torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=M_dims), requires_grad=True)
-        self.F = torch.nn.Parameter(torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=F_dims),
-                                    requires_grad=True)
+        # self.F = torch.nn.Parameter(torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=F_dims),
+        #                             requires_grad=True)
+        self.F = F(input_dim=self.tensor_dimensions[0], out_dim=self.output_dimensions[0], hidden_dim=256)
 
         # Create solver
         assert t_span[0] < t_span[1], "t_span[0] must be < t_span[1]"
@@ -117,9 +152,9 @@ class TensorODEBLOCK(torch.nn.Module):
         """
         # Record parameters for monitoring
 
-        self.monitor['M'].append(torch.clone(self.M).detach())
-        self.monitor['P'].append(torch.clone(self.P).detach())
-        self.monitor['F'].append(torch.clone(self.F).detach())
+        # self.monitor['M'].append(torch.clone(self.M).detach())
+        # self.monitor['P'].append(torch.clone(self.P).detach())
+        # self.monitor['F'].append(torch.clone(self.F).detach())
 
         # param check
         assert len(x.size()) == 2, "No support for batch inputs with d>1 yet"
@@ -129,9 +164,10 @@ class TensorODEBLOCK(torch.nn.Module):
         P_contract_dims = list(range(len(self.input_dimensions)))
         A0 = torch.tensordot(a=z0, b=self.P, dims=(z0_contract_dims, P_contract_dims))
         A_f = self.forward_impl(A0=A0)
-        A_contract_dims = list(range(1, len(self.tensor_dimensions) + 1))
-        F_contract_dims = list(range(0, len(self.tensor_dimensions)))
-        y_hat = torch.tensordot(a=A_f, b=self.F, dims=(A_contract_dims, F_contract_dims))
+        # A_contract_dims = list(range(1, len(self.tensor_dimensions) + 1))
+        # F_contract_dims = list(range(0, len(self.tensor_dimensions)))
+        # y_hat = torch.tensordot(a=A_f, b=self.F, dims=(A_contract_dims, F_contract_dims))
+        y_hat = self.F(A_f)
         return y_hat
 
     def forward_impl(self, A0: torch.Tensor) -> torch.Tensor:
@@ -145,8 +181,9 @@ class TensorODEBLOCK(torch.nn.Module):
             pass
         elif self.forward_impl_method == 'mytorch':
             torch_solver = TorchRK45(device=torch.device('cpu'), tensor_dtype=self.tensor_dtype, is_batch=True)
-            A_f = torch_solver.solve_ivp(func=self.ode_f, t_span=self.t_span, z0=A0,
+            A_f = torch_solver.solve_ivp(func=self.tensor_ode_func, t_span=self.t_span, z0=A0,
                                          args=(self.M, self.basis_fn, self.basis_params)).zf
+        # this if branch is just left for varifying results when needed (verify my modification for batch rk45)
         elif self.forward_impl_method == 'single_torch':
             # A0 is a single sample in the Bx dim(A0) batch of samples
             # FIXME tried vmap but didn't work for batch solve
@@ -162,20 +199,24 @@ class TensorODEBLOCK(torch.nn.Module):
 
             batch_size = A0.size()[0]
             torch_solver = TorchRK45(device=torch.device('cpu'), tensor_dtype=self.tensor_dtype, is_batch=True)
-            solve_ = lambda a0: torch_solver.solve_ivp(func=self.ode_f, t_span=self.t_span, z0=a0,
+            solve_ = lambda a0: torch_solver.solve_ivp(func=self.tensor_ode_func, t_span=self.t_span, z0=a0,
                                                        args=(self.M, self.basis_fn, self.basis_params)).zf
             # FIXME Warning ! slow slow slow
             A_f = torch.stack([solve_(A0[b, :]) for b in range(batch_size)], dim=0)
 
         elif self.forward_impl_method == 'torchdiffeq':
-            func_ = lambda t, A: self.ode_f(t, A, self.M, basis_fn='poly', basis_params=self.basis_params)
+            func_ = lambda t, A: self.tensor_ode_func(t, A, self.M, basis_fn='poly', basis_params=self.basis_params)
+            A_f = odeint(func=func_, t=torch.tensor([0.0, 1.0]), y0=A0, rtol=1e-5, atol=1e-8)[-1, :]
+        elif self.forward_impl_method == 'nn':
+            nn_ode_func = ODEFunc(device=torch.device('cpu'), data_dim=self.tensor_dimensions[0], hidden_dim=64)
+            func_ = lambda t, A: nn_ode_func(t, A)
             A_f = odeint(func=func_, t=torch.tensor([0.0, 1.0]), y0=A0, rtol=1e-5, atol=1e-8)[-1, :]
         else:
             raise ValueError(f"forward_impl_method {self.forward_impl_method} not supported, "
                              f"must be one of {TensorODEBLOCK.FORWARD_IMPL}")
         return A_f
 
-    def ode_f(self, t: float, A: torch.Tensor, C: torch.Tensor, basis_fn: str, basis_params: dict):
+    def tensor_ode_func(self, t: float, A: torch.Tensor, C: torch.Tensor, basis_fn: str, basis_params: dict):
         # TODO batched dot (what we need)
         # https://pytorch.org/tutorials/prototype/vmap_recipe.html
         """

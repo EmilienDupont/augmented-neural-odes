@@ -46,7 +46,7 @@ anode: # augmented neural ode
   num_layers: 20
   augment_dim: 1
 tode: # tensor ode
-  tensor_dims: { 1: [ 2 ],2: [ 4 ] }  # the tensor-dim for the projected latent variable
+  tensor_dims: { 1: [ 2 ],2: [ 3 ] }  # the tensor-dim for the projected latent variable
   # input-dims -> tensor-dims
   # as a start let's simplify things and make tensors_dim of the same order as the input
   # i.e. if the input is vector (order-1 tensor ) then tensor-dim will be (order-1 tensor) with
@@ -56,7 +56,9 @@ tode: # tensor ode
   # if input is a 3D tensor (colored) image -> tensor dims will be for order-3 tensor with higher dimensions
   non_linearity: None
   basis: poly,3 # poly, dim or trig , a,b,c
-  t_span: [ 0,1 ]
-  forward_impl_method: "torchdiffeq"
-  lambda : 2.0 # TODO make it fn(Coeff tensor order)
+  t_span: [ 0,0.05 ] # FIXME : higher tf => higher depth => h(delta t) underflow problem
+  # TODO Understand : why when tf is large (e.g. 10) we get underflow
+  # TODO more experiment with tf : seems crucial to accuracy and running time
+  forward_impl_method: "mytorch"
+  lambda : 2.0 # TODO make it fn (Coeff tensor order)
 
