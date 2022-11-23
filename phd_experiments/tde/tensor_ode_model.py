@@ -1,48 +1,27 @@
 from typing import List, Tuple, Callable
-
 import numpy as np
-import scipy
 import torch
-from torch import vmap
 from torchdiffeq import odeint
-
 from anode.models import ODEFunc
 # https://pytorch.org/tutorials/prototype/vmap_recipe.html
 from phd_experiments.tde.basis import Basis
 from phd_experiments.tde.misc import func_tensors_contract
 from phd_experiments.torch_ode.torch_rk45 import TorchRK45
 
+
 class F(torch.nn.Module):
     NON_LINEARITIES = ["relu", "sigmoid", "softplus"]
 
-    def __init__(self, input_dim, hidden_dim, out_dim, n_internal_layers=1, non_linearity='relu'):
+    def __init__(self, input_dim, hidden_dim, out_dim):
         super().__init__()
-        assert n_internal_layers >= 0, f"number of layers must >= 0, given n_internal_layers = {n_internal_layers}"
-        assert non_linearity in F.NON_LINEARITIES, f"non-linearities must be one of {F.NON_LINEARITIES} , " \
-                                                   f"given {non_linearity}"
-        assert non_linearity
-        self.out_dim = out_dim
-        self.input_dim = input_dim
-        self.fc_one = torch.nn.Linear(input_dim, out_dim)
-        self.fc_in = torch.nn.Linear(input_dim, hidden_dim)
-        self.fc_out = torch.nn.Linear(hidden_dim, out_dim)
-        self.layers = [torch.nn.Linear(hidden_dim, hidden_dim) for _ in range(n_internal_layers + 1)]
-        if non_linearity == "relu":
-            self.non_linearity = torch.nn.ReLU()
-        elif non_linearity == "softplus":
-            self.non_linearity = torch.nn.Softplus()
-        elif non_linearity == "sigmoid":
-            self.non_linearity = torch.nn.Sigmoid()
-        else:
-            raise ValueError(f"Unsupported non-linearity {non_linearity}")
+        self.model = torch.nn.Sequential(torch.nn.Linear(input_dim, hidden_dim),
+                                         torch.nn.ReLU(),
+                                         torch.nn.Linear(hidden_dim, hidden_dim),
+                                         torch.nn.ReLU(),
+                                         torch.nn.Linear(hidden_dim, out_dim))
 
     def forward(self, x):
-        u = self.fc_in(x)
-        for layer in self.layers:
-            u = layer(u)
-            u = self.non_linearity(u)
-        out = self.fc_out(u)
-        return out
+        return self.model(x)
 
 
 class TensorODEBLOCK(torch.nn.Module):

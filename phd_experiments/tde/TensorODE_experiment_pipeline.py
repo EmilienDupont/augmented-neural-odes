@@ -12,7 +12,7 @@ from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 from torch.nn import SmoothL1Loss
 from torch.optim import Adam
-from phd_experiments.tde.tde_model import TensorODEBLOCK
+from phd_experiments.tde.tensor_ode_model import TensorODEBLOCK
 
 MODEL_NAMES = ['resnet', 'node', 'anode', 'tode']
 DATASETS_NAMES = ['flip1d', 'concentric-sphere']

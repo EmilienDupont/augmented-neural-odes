@@ -4,7 +4,7 @@ model-name: 'tode'
 torch:
   device: "cpu"
 # 3) select a data-set. See sec 4
-dataset-name: 'flip1d'
+dataset-name: 'concentric-sphere'
 # 4) datasets
 # each dataset must have input_dim,output_dim
 flip1d:
