@@ -3,6 +3,8 @@ from typing import List
 
 import torch
 
+from phd_experiments.tensor_networks.tensor_train import TensorTrainFixedRank
+
 
 def gen_einsum_eqn(n_basis):
     assert n_basis <= len(string.ascii_letters)
@@ -15,12 +17,16 @@ def gen_einsum_eqn(n_basis):
     return eqn
 
 
-def func_tensors_contract(C: torch.Tensor, Phi: List[torch.Tensor]):
-    assert len(C.size()) - 1 == len(Phi)
+def full_weight_tensor_contract(W: torch.Tensor, Phi: List[torch.Tensor]):
+    assert len(W.size()) - 1 == len(Phi)
     eqn = gen_einsum_eqn(len(Phi))
-    operands = [C] + Phi
+    operands = [W] + Phi
     v = torch.einsum(eqn, operands)
     return v
+
+
+def tt_weight_contract(W: TensorTrainFixedRank, Phi: List[torch.Tensor]):
+    pass
 
 
 def poly2(x: torch.Tensor, t: float, degree: int):
@@ -85,7 +91,7 @@ if __name__ == '__main__':
     deg = 3
     x = torch.rand(batch, dim)
     Phi = poly2(x=x, t=1, degree=deg)
-    C_size = [dim] + [deg + 1 for _ in range(dim+1)]
+    C_size = [dim] + [deg + 1 for _ in range(dim + 1)]
     C = torch.rand(C_size)
-    func_tensors_contract(C=C, Phi=Phi)
+    full_weight_tensor_contract(W=C, Phi=Phi)
     print("")

@@ -1,0 +1,20 @@
+TorchMPS Basic Usage
+####################
+
+As our models are built on Pytorch, users will need to have this installed in a directory contained in the environment variable `PYTHONPATH`. Torchvision is also used in our example script `train_script.py`, but not anywhere else.
+
+After cloning the repo, running `train_script.py` gives a simple example of how our MPS can be used to classify MNIST digits. In general, MPS models can be invoked by simply importing the class `MPS` from `torchmps.py`, and then creating a new `MPS` instance. For example, an MPS which converts 28x28 grayscale images into a 10 dimensional output vector can be utilized as follows::
+
+    import torch
+    from torchmps import MPS
+
+    # Initialize functional MPS for 28x32 images
+    my_mps = MPS(input_dim=28**2, output_dim=10, bond_dim=23)
+
+    # Now get a batch of flattened images
+    flat_images = torch.randn(100, 28, 28).reshape(100, -1)
+
+    # Feed images to the MPS to get outputs
+    outputs = my_mps(flat_images)
+
+That's it! After creation, `my_mps` acts as a stateful function whose internal parameters can be trained exactly as any other Pytorch Module (e.g. nn.Linear, nn.Conv1d, nn.Sequential, etc)

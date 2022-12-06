@@ -3,9 +3,8 @@ import numpy as np
 import torch
 from torchdiffeq import odeint
 from anode.models import ODEFunc
-# https://pytorch.org/tutorials/prototype/vmap_recipe.html
-from phd_experiments.tde.basis import Basis
-from phd_experiments.tde.misc import func_tensors_contract
+from phd_experiments.tensor_ode.basis import Basis
+from phd_experiments.tensor_ode.tensor_ode_utils import full_weight_tensor_contract
 from phd_experiments.torch_ode.torch_rk45 import TorchRK45
 
 
@@ -29,7 +28,6 @@ class TensorODEBLOCK(torch.nn.Module):
     BASIS = ['None', 'poly', 'trig']
     FORWARD_IMPL = ['mytorch', 'torchdiffeq', 'nn']
 
-    # FORWARD_IMPL = ['gen_linear_const', 'gen_linear_tvar', 'mytorch', 'single_torch', 'torchdiffeq', 'scipy','nn']
     def __init__(self, input_dimensions: List[int], output_dimensions: List[int],
                  tensor_dimensions: List[int], basis_str: str, t_span: Tuple, non_linearity: None | str = None,
                  t_eval: List = None, forward_impl_method: str = "batch_torch",
@@ -79,19 +77,19 @@ class TensorODEBLOCK(torch.nn.Module):
 
         # M dimensions
         if self.basis_fn == 'None':
-            M_dims = tensor_dimensions.copy()
-            M_dims.extend(tensor_dimensions.copy())
+            W_dims = tensor_dimensions.copy()
+            W_dims.extend(tensor_dimensions.copy())
             # C_dim.append(1) # time
         elif self.basis_fn == 'poly':
             # assume inputs / outputs are vectors (batches of vectors)
 
-            M_dims = tensor_dimensions.copy()  # the output is the projected latent A
-            M_dims.extend(list(np.repeat(a=int(int(self.basis_params['deg'] + 1)),  # +1 for const-term
+            W_dims = tensor_dimensions.copy()  # the output is the projected latent A
+            W_dims.extend(list(np.repeat(a=int(int(self.basis_params['deg'] + 1)),  # +1 for const-term
                                          repeats=self.tensor_dimensions[0] + 1)))  # +1 for time
         elif self.basis_fn == 'trig':
-            M_dims = tensor_dimensions.copy()
-            M_dims.extend(tensor_dimensions.copy())
-            M_dims.append(2)  # sin and cos
+            W_dims = tensor_dimensions.copy()
+            W_dims.extend(tensor_dimensions.copy())
+            W_dims.append(2)  # sin and cos
 
         P_dims = input_dimensions.copy()
         P_dims.extend(tensor_dimensions.copy())
@@ -102,10 +100,9 @@ class TensorODEBLOCK(torch.nn.Module):
 
         # initialize model parameters
         ulow, uhigh = 1e-7, 1e-5
-        self.P = torch.nn.Parameter(torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=P_dims),
-                                    requires_grad=True)
-        self.M = torch.nn.Parameter(
-            torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=M_dims), requires_grad=True)
+        self.P = torch.nn.Parameter(torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=P_dims))
+        self.W = torch.nn.Parameter(
+            torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=W_dims))
         # self.F = torch.nn.Parameter(torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=F_dims),
         #                             requires_grad=True)
         self.F = F(input_dim=self.tensor_dimensions[0], out_dim=self.output_dimensions[0], hidden_dim=256)
@@ -114,7 +111,7 @@ class TensorODEBLOCK(torch.nn.Module):
         assert t_span[0] < t_span[1], "t_span[0] must be < t_span[1]"
         if t_eval is not None:
             assert t_eval[0] >= t_span[0] and t_eval[1] <= t_span[1], "t_eval must be subset of t_span ranges"
-        self.monitor = {'M': [self.M], 'P': [self.P], 'F': [self.F]}
+        self.monitor = {'W': [self.W], 'P': [self.P], 'F': [self.F]}
 
     def forward(self, x: torch.Tensor):
         """
@@ -161,7 +158,7 @@ class TensorODEBLOCK(torch.nn.Module):
         elif self.forward_impl_method == 'mytorch':
             torch_solver = TorchRK45(device=torch.device('cpu'), tensor_dtype=self.tensor_dtype, is_batch=True)
             A_f = torch_solver.solve_ivp(func=self.tensor_ode_func, t_span=self.t_span, z0=A0,
-                                         args=(self.M, self.basis_fn, self.basis_params)).zf
+                                         args=(self.W, self.basis_fn, self.basis_params)).zf
         # this if branch is just left for varifying results when needed (verify my modification for batch rk45)
         elif self.forward_impl_method == 'single_torch':
             # A0 is a single sample in the Bx dim(A0) batch of samples
@@ -179,12 +176,12 @@ class TensorODEBLOCK(torch.nn.Module):
             batch_size = A0.size()[0]
             torch_solver = TorchRK45(device=torch.device('cpu'), tensor_dtype=self.tensor_dtype, is_batch=True)
             solve_ = lambda a0: torch_solver.solve_ivp(func=self.tensor_ode_func, t_span=self.t_span, z0=a0,
-                                                       args=(self.M, self.basis_fn, self.basis_params)).zf
+                                                       args=(self.W, self.basis_fn, self.basis_params)).zf
             # FIXME Warning ! slow slow slow
             A_f = torch.stack([solve_(A0[b, :]) for b in range(batch_size)], dim=0)
 
         elif self.forward_impl_method == 'torchdiffeq':
-            func_ = lambda t, A: self.tensor_ode_func(t, A, self.M, basis_fn='poly', basis_params=self.basis_params)
+            func_ = lambda t, A: self.tensor_ode_func(t, A, self.W, basis_fn='poly', basis_params=self.basis_params)
             A_f = odeint(func=func_, t=torch.tensor([0.0, 1.0]), y0=A0, rtol=1e-5, atol=1e-8)[-1, :]
         elif self.forward_impl_method == 'nn':
             nn_ode_func = ODEFunc(device=torch.device('cpu'), data_dim=self.tensor_dimensions[0], hidden_dim=64)
@@ -195,7 +192,7 @@ class TensorODEBLOCK(torch.nn.Module):
                              f"must be one of {TensorODEBLOCK.FORWARD_IMPL}")
         return A_f
 
-    def tensor_ode_func(self, t: float, A: torch.Tensor, C: torch.Tensor, basis_fn: str, basis_params: dict):
+    def tensor_ode_func(self, t: float, A: torch.Tensor, W: torch.Tensor, basis_fn: str, basis_params: dict):
         # TODO batched dot (what we need)
         # https://pytorch.org/tutorials/prototype/vmap_recipe.html
         """
@@ -204,7 +201,7 @@ class TensorODEBLOCK(torch.nn.Module):
         ----------
         t
         A : Batch x tensor dimensions
-        C : Coeff tensor
+        W : Coeff tensor
         non_linearity
         Returns
         -------
@@ -224,25 +221,25 @@ class TensorODEBLOCK(torch.nn.Module):
         if basis_fn == 'None':
             if self.forward_impl_method == 'batch_torch':
                 A_contract_dims = list(range(len(A.size())))[1:]
-                C_contract_dims = list(range(len(C.size())))[-len(A_contract_dims):]
+                W_contract_dims = list(range(len(W.size())))[-len(A_contract_dims):]
             elif self.forward_impl_method == 'single_torch':
                 A_contract_dims = list(range(len(A.size())))
-                C_contract_dims = list(range(len(C.size())))[-len(A_contract_dims):]
+                W_contract_dims = list(range(len(W.size())))[-len(A_contract_dims):]
 
             else:
                 raise ValueError(f'forward_impl_method {self.forward_impl_methfod} is not supported, must be one of '
                                  f'= {TensorODEBLOCK.FORWARD_IMPL}')
-            dAdt = torch.tensordot(a=A, b=C, dims=[A_contract_dims, C_contract_dims])
+            dAdt = torch.tensordot(a=A, b=W, dims=[A_contract_dims, W_contract_dims])
 
         elif basis_fn == 'poly':
             Phi = Basis.poly(x=A, t=t, poly_deg=basis_params['deg'])
-            dAdt = func_tensors_contract(C=C, Phi=Phi)
+            dAdt = full_weight_tensor_contract(W=W, Phi=Phi)
             # print(C,t)
         elif basis_fn == 'trig':
             Phi = Basis.trig(A, t, float(basis_params['a']), float(basis_params['b']), float(basis_params['c']))
-            U_contract_dims = list(range(len(self.tensor_dimensions), len(C.size())))
+            U_contract_dims = list(range(len(self.tensor_dimensions), len(W.size())))
             A_contract_dims = list(range(1, len(Phi.size())))
-            dAdt = torch.tensordot(Phi, C, dims=(A_contract_dims, U_contract_dims))
+            dAdt = torch.tensordot(Phi, W, dims=(A_contract_dims, U_contract_dims))
         else:
             raise ValueError(f"basis_fn : {basis_fn} is not supported : must be {TensorODEBLOCK.BASIS}")
 
@@ -265,4 +262,4 @@ class TensorODEBLOCK(torch.nn.Module):
         return self.P
 
     def get_M(self):
-        return self.M
+        return self.W
