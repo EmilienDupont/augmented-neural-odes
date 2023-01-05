@@ -3,9 +3,9 @@ import numpy as np
 import torch
 from torchdiffeq import odeint
 from anode.models import ODEFunc
-from phd_experiments.tensor_ode.basis import Basis
-from phd_experiments.tensor_ode.tensor_ode_utils import full_weight_tensor_contract
-from phd_experiments.torch_ode.torch_rk45 import TorchRK45
+from phd_experiments.tt_ode.basis import Basis
+from phd_experiments.tt_ode.tensor_ode_utils import full_weight_tensor_contract
+from phd_experiments.torch_ode_solvers.torch_rk45 import TorchRK45
 
 
 class F(torch.nn.Module):
@@ -23,7 +23,7 @@ class F(torch.nn.Module):
         return self.model(x)
 
 
-class TensorODEBLOCK(torch.nn.Module):
+class TensorTrainODEBLOCK(torch.nn.Module):
     NON_LINEARITIES = {'relu': torch.nn.ReLU(), 'sigmoid': torch.nn.Sigmoid(), 'tanh': torch.nn.Tanh()}
     BASIS = ['None', 'poly', 'trig']
     FORWARD_IMPL = ['mytorch', 'torchdiffeq', 'nn']
@@ -47,10 +47,10 @@ class TensorODEBLOCK(torch.nn.Module):
         assert len(input_dimensions) == 1, " Supporting input vectors only"
         assert len(output_dimensions) == 1, " Supporting output vectors only"
         assert len(tensor_dimensions) == 1, "Supporting vector higher dimension latents only"
-        if non_linearity and non_linearity not in TensorODEBLOCK.NON_LINEARITIES.keys():
+        if non_linearity and non_linearity not in TensorTrainODEBLOCK.NON_LINEARITIES.keys():
             raise ValueError(
                 f'Non-linearity {self.non_linearity} not supported : must be one of '
-                f'{TensorODEBLOCK.NON_LINEARITIES.keys()}')
+                f'{TensorTrainODEBLOCK.NON_LINEARITIES.keys()}')
         assert len(input_dimensions) == len(tensor_dimensions), f"For simplification we start with len(tensor_dims) = " \
                                                                 f"len(input_dims) got len(input_dimensions) " \
                                                                 f"= {len(input_dimensions)} while len(tensor_dims) " \
@@ -58,15 +58,15 @@ class TensorODEBLOCK(torch.nn.Module):
         assert isinstance(input_dimensions, list), "Input dimensions must be  a list"
         assert isinstance(output_dimensions, list), "Output dimensions must be  a list"
         assert isinstance(tensor_dimensions, list), "Tensor dimensions must be  a list"
-        assert forward_impl_method in TensorODEBLOCK.FORWARD_IMPL, f"forward_impl = {self.forward_impl_method} " \
+        assert forward_impl_method in TensorTrainODEBLOCK.FORWARD_IMPL, f"forward_impl = {self.forward_impl_method} " \
                                                                    f"not supported , " \
-                                                                   f"must be one of {TensorODEBLOCK.FORWARD_IMPL}"
+                                                                   f"must be one of {TensorTrainODEBLOCK.FORWARD_IMPL}"
 
         # add is_batch flag
 
         # parse basis function params
         basis_ = basis_str.split(',')
-        assert basis_[0] in TensorODEBLOCK.BASIS, f"unknown basis {basis_[0]} : must be {TensorODEBLOCK.BASIS}"
+        assert basis_[0] in TensorTrainODEBLOCK.BASIS, f"unknown basis {basis_[0]} : must be {TensorTrainODEBLOCK.BASIS}"
         self.basis_fn = basis_[0]
         if basis_[0] == 'None':
             self.basis_params = None
@@ -101,6 +101,7 @@ class TensorODEBLOCK(torch.nn.Module):
         # initialize model parameters
         ulow, uhigh = 1e-7, 1e-5
         self.P = torch.nn.Parameter(torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=P_dims))
+        # TODO replace W tensor with tensor_train
         self.W = torch.nn.Parameter(
             torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=W_dims))
         # self.F = torch.nn.Parameter(torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=F_dims),
@@ -189,7 +190,7 @@ class TensorODEBLOCK(torch.nn.Module):
             A_f = odeint(func=func_, t=torch.tensor([0.0, 1.0]), y0=A0, rtol=1e-5, atol=1e-8)[-1, :]
         else:
             raise ValueError(f"forward_impl_method {self.forward_impl_method} not supported, "
-                             f"must be one of {TensorODEBLOCK.FORWARD_IMPL}")
+                             f"must be one of {TensorTrainODEBLOCK.FORWARD_IMPL}")
         return A_f
 
     def tensor_ode_func(self, t: float, A: torch.Tensor, W: torch.Tensor, basis_fn: str, basis_params: dict):
@@ -228,7 +229,7 @@ class TensorODEBLOCK(torch.nn.Module):
 
             else:
                 raise ValueError(f'forward_impl_method {self.forward_impl_methfod} is not supported, must be one of '
-                                 f'= {TensorODEBLOCK.FORWARD_IMPL}')
+                                 f'= {TensorTrainODEBLOCK.FORWARD_IMPL}')
             dAdt = torch.tensordot(a=A, b=W, dims=[A_contract_dims, W_contract_dims])
 
         elif basis_fn == 'poly':
@@ -241,7 +242,7 @@ class TensorODEBLOCK(torch.nn.Module):
             A_contract_dims = list(range(1, len(Phi.size())))
             dAdt = torch.tensordot(Phi, W, dims=(A_contract_dims, U_contract_dims))
         else:
-            raise ValueError(f"basis_fn : {basis_fn} is not supported : must be {TensorODEBLOCK.BASIS}")
+            raise ValueError(f"basis_fn : {basis_fn} is not supported : must be {TensorTrainODEBLOCK.BASIS}")
 
         return dAdt
 
@@ -261,5 +262,5 @@ class TensorODEBLOCK(torch.nn.Module):
     def get_P(self):
         return self.P
 
-    def get_M(self):
+    def get_W(self):
         return self.W

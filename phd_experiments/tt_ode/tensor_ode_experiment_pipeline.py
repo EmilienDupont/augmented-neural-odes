@@ -12,7 +12,7 @@ from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 from torch.nn import SmoothL1Loss
 from torch.optim import Adam
-from phd_experiments.tensor_ode.tensor_ode_model import TensorODEBLOCK
+from phd_experiments.tensor_ode.tt_ode_model import TensorTrainODEBLOCK
 
 MODEL_NAMES = ['resnet', 'node', 'anode', 'tode']
 DATASETS_NAMES = ['flip1d', 'concentric-sphere']
@@ -44,11 +44,11 @@ def get_model(configs: dict):
         tensor_dims = configs[configs['model-name']]['tensor_dims'][input_dim]
         non_linearity = None if configs[configs['model-name']]['non_linearity'] == 'None' else \
             configs[configs['model-name']]['non_linearity']
-        return TensorODEBLOCK(input_dimensions=[input_dim],
-                              output_dimensions=[configs[configs['dataset-name']]['output_dim']],
-                              tensor_dimensions=tensor_dims, basis_str=configs[configs['model-name']]['basis'],
-                              t_span=tuple(configs[configs['model-name']]['t_span']), non_linearity=non_linearity,
-                              forward_impl_method=configs[configs['model-name']]['forward_impl_method'])
+        return TensorTrainODEBLOCK(input_dimensions=[input_dim],
+                                   output_dimensions=[configs[configs['dataset-name']]['output_dim']],
+                                   tensor_dimensions=tensor_dims, basis_str=configs[configs['model-name']]['basis'],
+                                   t_span=tuple(configs[configs['model-name']]['t_span']), non_linearity=non_linearity,
+                                   forward_impl_method=configs[configs['model-name']]['forward_impl_method'])
         # TODO should t_span be parameterized ?
 
 
@@ -123,7 +123,7 @@ if __name__ == '__main__':
             optimizer.zero_grad()
             Y_pred = model_(X)
             forward_call_count += 1
-            reg_term = lambda_ * torch.norm(model_.get_M()) if isinstance(model_,TensorODEBLOCK) else \
+            reg_term = lambda_ * torch.norm(model_.get_W()) if isinstance(model_, TensorTrainODEBLOCK) else \
                 torch.tensor([0.0])
             loss = loss_fn(Y_pred, Y) + reg_term
             loss.backward()
@@ -142,14 +142,14 @@ if __name__ == '__main__':
                 Rolling average loss = {rolling_avg_loss} <= 
                 loss_threshold = {configs_['train']['loss_threshold']}""")
             break
-    if isinstance(model_, TensorODEBLOCK):
+    if isinstance(model_, TensorTrainODEBLOCK):
         logger.info(f'for TODE model : \n'
                     f'P = {model_.get_P()}\n'
                     f'F = {model_.get_F()}\n'
-                    f'M = {model_.get_M()}\n')
+                    f'M = {model_.get_W()}\n')
     end_time = datetime.datetime.now()
     training_time = end_time - start_time
-    total_nfe = model_.get_nfe() if isinstance(model_, (ODENet, TensorODEBLOCK)) else None
+    total_nfe = model_.get_nfe() if isinstance(model_, (ODENet, TensorTrainODEBLOCK)) else None
     # avg_nfe = float(model_.get_nfe())/forward_call_count if isinstance(model_, (ODENet, TensorODEBLOCK)) else None
     logger.info(
         f'final epoch loss = {epochs_loss_history[-1]} at epoch = {epoch}\n'
