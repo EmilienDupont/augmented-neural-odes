@@ -38,12 +38,12 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader
 
-from phd_experiments.torch_ode.DataGenerator import ToyODEDataGenerator
-from phd_experiments.torch_ode.torch_ode_solver import TorchODESolver
-from phd_experiments.torch_ode.torch_ode_utils import get_device_info, format_timedelta, log_train_experiment
-from phd_experiments.torch_ode.torch_rk45 import TorchRK45
-from phd_experiments.torch_ode.torch_train_learnable_dynamics import ODEFuncNN3Layer
-from phd_experiments.torch_ode.torch_train_true_dynamics import f_ode_linear_uncoupled, f_ode_linear_coupled, \
+from phd_experiments.torch_ode_solvers.DataGenerator import ToyODEDataGenerator
+from phd_experiments.torch_ode_solvers.torch_ode_solver import TorchODESolver
+from phd_experiments.torch_ode_solvers.torch_ode_utils import get_device_info, format_timedelta, log_train_experiment
+from phd_experiments.torch_ode_solvers.torch_rk45 import TorchRK45
+from phd_experiments.torch_ode_solvers.torch_train_learnable_dynamics import ODEFuncNN3Layer
+from phd_experiments.torch_ode_solvers.torch_train_true_dynamics import f_ode_linear_uncoupled, f_ode_linear_coupled, \
     f_van_der_pol
 
 SEED = 123456789

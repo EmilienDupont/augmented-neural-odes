@@ -15,8 +15,8 @@ from typing import Callable, Tuple, Any
 import numpy as np
 import torch
 from torch import Tensor
-from phd_experiments.torch_ode.common import torch_select_initial_step, torch_rms_norm
-from phd_experiments.torch_ode.torch_ode_solver import TorchODESolver, TorchODESolverSolution
+from phd_experiments.torch_ode_solvers.common import torch_select_initial_step, torch_rms_norm
+from phd_experiments.torch_ode_solvers.torch_ode_solver import TorchODESolver, TorchODESolverSolution
 
 
 class TorchRK45(TorchODESolver):

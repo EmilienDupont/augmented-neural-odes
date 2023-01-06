@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
-from phd_experiments.torch_ode.torch_ode_solver import TorchODESolver, TorchODESolverSolution
+from phd_experiments.torch_ode_solvers.torch_ode_solver import TorchODESolver, TorchODESolverSolution
 
 
 class TorchEulerSolver(TorchODESolver):

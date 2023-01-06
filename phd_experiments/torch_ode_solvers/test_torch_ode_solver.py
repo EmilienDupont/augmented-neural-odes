@@ -4,10 +4,10 @@ from typing import List
 import numpy as np
 import torch
 from scipy.integrate import solve_ivp
-from phd_experiments.torch_ode.torch_euler import TorchEulerSolver
+from phd_experiments.torch_ode_solvers.torch_euler import TorchEulerSolver
 import pytest
 
-from phd_experiments.torch_ode.torch_rk45 import TorchRK45
+from phd_experiments.torch_ode_solvers.torch_rk45 import TorchRK45
 
 #######################
 # Test Global Variables

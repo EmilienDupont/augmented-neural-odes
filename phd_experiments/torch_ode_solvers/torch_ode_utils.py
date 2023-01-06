@@ -7,7 +7,7 @@ import torch
 from dill.source import getsource
 from torch import nn
 
-from phd_experiments.torch_ode.torch_ode_solver import TorchODESolver
+from phd_experiments.torch_ode_solvers.torch_ode_solver import TorchODESolver
 
 
 def get_device_info():

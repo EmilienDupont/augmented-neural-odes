@@ -44,14 +44,16 @@ class TensorTrainFixedRank:
             basis_tensors), f"# of core-tensors must == number of basis tensors " \
                             f", {len(self.core_tensors)} != {len(basis_tensors)}"
         n_cores = len(self.core_tensors)
-        res_tensor = torch.einsum("ij,i->j", self.core_tensors[0], basis_tensors[0])
+        # first core
+        res_tensor = torch.einsum("ij,bi->bj", self.core_tensors[0], basis_tensors[0])
+        # middle cores
         for i in range(1, len(self.core_tensors) - 1):
-            core_basis = torch.einsum("ijk,j->ik", self.core_tensors[i], basis_tensors[i])
-            res_tensor = torch.einsum("i,ik->k", res_tensor, core_basis)
-
-        core_basis = torch.einsum("ijl,j->il", self.core_tensors[n_cores - 1], basis_tensors[n_cores - 1])
-        res_tensor = torch.einsum("i,il->l", res_tensor, core_basis)
-        assert res_tensor.size()[0] == self.out_dim, f"output tensor size must = " \
+            core_basis = torch.einsum("ijk,bj->bik", self.core_tensors[i], basis_tensors[i])
+            res_tensor = torch.einsum("bi,bik->bk", res_tensor, core_basis)
+        # last core
+        core_basis = torch.einsum("ijl,bj->bil", self.core_tensors[n_cores - 1], basis_tensors[n_cores - 1])
+        res_tensor = torch.einsum("bi,bil->bl", res_tensor, core_basis)
+        assert res_tensor.size()[1] == self.out_dim, f"output tensor size must = " \
                                                      f"out_dim : {res_tensor.size()}!={self.out_dim}"
         return res_tensor
 

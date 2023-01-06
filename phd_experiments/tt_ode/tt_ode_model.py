@@ -3,8 +3,9 @@ import numpy as np
 import torch
 from torchdiffeq import odeint
 from anode.models import ODEFunc
+from phd_experiments.tensor_networks.tt import TensorTrainFixedRank
 from phd_experiments.tt_ode.basis import Basis
-from phd_experiments.tt_ode.tensor_ode_utils import full_weight_tensor_contract
+from phd_experiments.tt_ode.tt_ode_utils import full_weight_tensor_contract
 from phd_experiments.torch_ode_solvers.torch_rk45 import TorchRK45
 
 
@@ -59,14 +60,15 @@ class TensorTrainODEBLOCK(torch.nn.Module):
         assert isinstance(output_dimensions, list), "Output dimensions must be  a list"
         assert isinstance(tensor_dimensions, list), "Tensor dimensions must be  a list"
         assert forward_impl_method in TensorTrainODEBLOCK.FORWARD_IMPL, f"forward_impl = {self.forward_impl_method} " \
-                                                                   f"not supported , " \
-                                                                   f"must be one of {TensorTrainODEBLOCK.FORWARD_IMPL}"
+                                                                        f"not supported , " \
+                                                                        f"must be one of {TensorTrainODEBLOCK.FORWARD_IMPL}"
 
         # add is_batch flag
 
         # parse basis function params
         basis_ = basis_str.split(',')
-        assert basis_[0] in TensorTrainODEBLOCK.BASIS, f"unknown basis {basis_[0]} : must be {TensorTrainODEBLOCK.BASIS}"
+        assert basis_[
+                   0] in TensorTrainODEBLOCK.BASIS, f"unknown basis {basis_[0]} : must be {TensorTrainODEBLOCK.BASIS}"
         self.basis_fn = basis_[0]
         if basis_[0] == 'None':
             self.basis_params = None
@@ -75,7 +77,7 @@ class TensorTrainODEBLOCK(torch.nn.Module):
         elif basis_[0] == 'trig':
             self.basis_params = {'a': basis_[1], 'b': basis_[2], 'c': basis_[3]}
 
-        # M dimensions
+        # W dimensions
         if self.basis_fn == 'None':
             W_dims = tensor_dimensions.copy()
             W_dims.extend(tensor_dimensions.copy())
@@ -101,9 +103,14 @@ class TensorTrainODEBLOCK(torch.nn.Module):
         # initialize model parameters
         ulow, uhigh = 1e-7, 1e-5
         self.P = torch.nn.Parameter(torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=P_dims))
-        # TODO replace W tensor with tensor_train
-        self.W = torch.nn.Parameter(
-            torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=W_dims))
+
+        # self.W = torch.nn.Parameter(
+        #     torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=W_dims))
+        D_a = tensor_dimensions[0]  # assume tensor dimensions is for length 1 : i.e. project vector to vector
+        # FIXME TT structure assume poly basis fun
+        self.W = TensorTrainFixedRank(order=D_a + 1, core_input_dim=self.basis_params['deg'] + 1, out_dim=D_a,
+                                      fixed_rank=5,
+                                      requires_grad=True)
         # self.F = torch.nn.Parameter(torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=F_dims),
         #                             requires_grad=True)
         self.F = F(input_dim=self.tensor_dimensions[0], out_dim=self.output_dimensions[0], hidden_dim=256)
@@ -193,7 +200,7 @@ class TensorTrainODEBLOCK(torch.nn.Module):
                              f"must be one of {TensorTrainODEBLOCK.FORWARD_IMPL}")
         return A_f
 
-    def tensor_ode_func(self, t: float, A: torch.Tensor, W: torch.Tensor, basis_fn: str, basis_params: dict):
+    def tensor_ode_func(self, t: float, A: torch.Tensor, W: TensorTrainFixedRank, basis_fn: str, basis_params: dict):
         # TODO batched dot (what we need)
         # https://pytorch.org/tutorials/prototype/vmap_recipe.html
         """
@@ -234,7 +241,8 @@ class TensorTrainODEBLOCK(torch.nn.Module):
 
         elif basis_fn == 'poly':
             Phi = Basis.poly(x=A, t=t, poly_deg=basis_params['deg'])
-            dAdt = full_weight_tensor_contract(W=W, Phi=Phi)
+            # dAdt = full_weight_tensor_contract(W=W, Phi=Phi)
+            dAdt = W.contract_basis(basis_tensors=Phi)
             # print(C,t)
         elif basis_fn == 'trig':
             Phi = Basis.trig(A, t, float(basis_params['a']), float(basis_params['b']), float(basis_params['c']))

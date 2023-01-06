@@ -12,7 +12,7 @@ from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 from torch.nn import SmoothL1Loss
 from torch.optim import Adam
-from phd_experiments.tensor_ode.tt_ode_model import TensorTrainODEBLOCK
+from phd_experiments.tt_ode.tt_ode_model import TensorTrainODEBLOCK
 
 MODEL_NAMES = ['resnet', 'node', 'anode', 'tode']
 DATASETS_NAMES = ['flip1d', 'concentric-sphere']
@@ -123,7 +123,8 @@ if __name__ == '__main__':
             optimizer.zero_grad()
             Y_pred = model_(X)
             forward_call_count += 1
-            reg_term = lambda_ * torch.norm(model_.get_W()) if isinstance(model_, TensorTrainODEBLOCK) else \
+            lambda_=1e-3
+            reg_term = lambda_ * model_.get_W().norm() if isinstance(model_, TensorTrainODEBLOCK) else \
                 torch.tensor([0.0])
             loss = loss_fn(Y_pred, Y) + reg_term
             loss.backward()
