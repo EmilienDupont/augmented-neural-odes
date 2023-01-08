@@ -1,11 +1,11 @@
-from typing import List, Tuple, Callable
+from typing import List, Tuple, Callable, Union
 import numpy as np
 import torch
 from torchdiffeq import odeint
 from anode.models import ODEFunc
-from phd_experiments.tensor_networks.tt import TensorTrainFixedRank
+from phd_experiments.tn.tt import TensorTrainFixedRank
 from phd_experiments.tt_ode.basis import Basis
-from phd_experiments.tt_ode.tt_ode_utils import full_weight_tensor_contract
+from phd_experiments.tt_ode.ttode_utils import full_weight_tensor_contract
 from phd_experiments.torch_ode_solvers.torch_rk45 import TorchRK45
 
 
@@ -32,7 +32,7 @@ class TensorTrainODEBLOCK(torch.nn.Module):
     def __init__(self, input_dimensions: List[int], output_dimensions: List[int],
                  tensor_dimensions: List[int], basis_str: str, t_span: Tuple, non_linearity: None | str = None,
                  t_eval: List = None, forward_impl_method: str = "batch_torch",
-                 tensor_dtype: torch.dtype = torch.float32):
+                 tensor_dtype: torch.dtype = torch.float32, tt_rank= Union[int | list[int]]):
         super().__init__()
         # FIXME add explicit params check
         self.tensor_dtype = tensor_dtype
@@ -43,6 +43,7 @@ class TensorTrainODEBLOCK(torch.nn.Module):
         self.non_linearity = non_linearity
         self.basis_str = basis_str
         self.t_span = t_span
+        self.tt_rank = tt_rank
         self.nfe = 0
         # assert parameters
         assert len(input_dimensions) == 1, " Supporting input vectors only"
@@ -107,12 +108,12 @@ class TensorTrainODEBLOCK(torch.nn.Module):
         # self.W = torch.nn.Parameter(
         #     torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=W_dims))
         D_a = tensor_dimensions[0]  # assume tensor dimensions is for length 1 : i.e. project vector to vector
+        # TODO support list of ranks or adaptive using ALS / DMRG ??
+        assert isinstance(tt_rank, int), "Now only supported fixed-rank TT"
         # FIXME TT structure assume poly basis fun
         self.W = TensorTrainFixedRank(order=D_a + 1, core_input_dim=self.basis_params['deg'] + 1, out_dim=D_a,
-                                      fixed_rank=5,
+                                      fixed_rank=self.tt_rank,
                                       requires_grad=True)
-        # self.F = torch.nn.Parameter(torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=F_dims),
-        #                             requires_grad=True)
         self.F = F(input_dim=self.tensor_dimensions[0], out_dim=self.output_dimensions[0], hidden_dim=256)
 
         # Create solver

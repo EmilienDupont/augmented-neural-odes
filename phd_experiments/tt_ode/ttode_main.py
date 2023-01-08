@@ -12,9 +12,9 @@ from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 from torch.nn import SmoothL1Loss
 from torch.optim import Adam
-from phd_experiments.tt_ode.tt_ode_model import TensorTrainODEBLOCK
+from phd_experiments.tt_ode.ttode_model import TensorTrainODEBLOCK
 
-MODEL_NAMES = ['resnet', 'node', 'anode', 'tode']
+MODEL_NAMES = ['resnet', 'node', 'anode', 'ttode']
 DATASETS_NAMES = ['flip1d', 'concentric-sphere']
 
 
@@ -39,17 +39,18 @@ def get_model(configs: dict):
                       hidden_dim=configs[configs['model-name']]['hidden_dim'],
                       output_dim=configs[configs['dataset-name']]['output_dim'],
                       augment_dim=configs[configs['model-name']]['augment_dim'])
-    elif configs['model-name'] == 'tode':
+    elif configs['model-name'] == 'ttode':
         input_dim = configs[configs['dataset-name']]['input_dim']
         tensor_dims = configs[configs['model-name']]['tensor_dims'][input_dim]
         non_linearity = None if configs[configs['model-name']]['non_linearity'] == 'None' else \
             configs[configs['model-name']]['non_linearity']
+        tt_rank = configs[configs['model-name']]['tt_rank']
         return TensorTrainODEBLOCK(input_dimensions=[input_dim],
                                    output_dimensions=[configs[configs['dataset-name']]['output_dim']],
                                    tensor_dimensions=tensor_dims, basis_str=configs[configs['model-name']]['basis'],
                                    t_span=tuple(configs[configs['model-name']]['t_span']), non_linearity=non_linearity,
-                                   forward_impl_method=configs[configs['model-name']]['forward_impl_method'])
-        # TODO should t_span be parameterized ?
+                                   forward_impl_method=configs[configs['model-name']]['forward_impl_method'],
+                                   tt_rank=tt_rank)
 
 
 def get_data_loader(dataset_name: str, configs: dict):
@@ -101,7 +102,7 @@ if __name__ == '__main__':
     with open(args.config) as f:
         configs_ = yaml.load(stream=f, Loader=yaml.FullLoader)
     logger.info(f"""Experimenting with model {configs_['model-name']} and dataset {configs_['dataset-name']}""")
-    if configs_['model-name'] == 'tode':
+    if configs_['model-name'] == 'ttode':
         logger.info(f"""Forward-Integration method is : {configs_[configs_['model-name']]['forward_impl_method']}""")
     model_ = get_model(configs=configs_)
     train_dataloader_, test_dataloader_ = get_data_loader(dataset_name=configs_['dataset-name'], configs=configs_)
@@ -123,8 +124,8 @@ if __name__ == '__main__':
             optimizer.zero_grad()
             Y_pred = model_(X)
             forward_call_count += 1
-            lambda_=1e-3
-            reg_term = lambda_ * model_.get_W().norm() if isinstance(model_, TensorTrainODEBLOCK) else \
+            W_Norm = lambda_ * model_.get_W().norm()
+            reg_term = lambda_ * W_Norm if isinstance(model_, TensorTrainODEBLOCK) else \
                 torch.tensor([0.0])
             loss = loss_fn(Y_pred, Y) + reg_term
             loss.backward()
