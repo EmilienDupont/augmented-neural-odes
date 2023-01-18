@@ -129,7 +129,13 @@ if __name__ == '__main__':
                 torch.tensor([0.0])
             loss = loss_fn(Y_pred, Y) + reg_term
             loss.backward()
-            optimizer.step()
+            if configs_['model-name']=='ttode' and configs_['ttode']['forward_impl_method'] == 'ttode_als':
+                # optimize based on the mix of gradient and ALS :
+                # gradient descent for the terminal neural network and ALS for the TT
+                with torch.no_grad():
+                    pass
+            else:
+                optimizer.step() # optimize based on builtin gradient descent
             batch_losses.append(loss.item())
         epoch_loss = np.mean(batch_losses)
         # print every freq epochs
