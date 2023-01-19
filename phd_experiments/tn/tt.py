@@ -24,10 +24,10 @@ class TensorTrainFixedRank:
         self.logger = logging.getLogger()
 
     def norm(self):
-        norm_ = 0
+        tot_norm = 0
         for tensor in self.core_tensors:
-            norm_ += torch.norm(tensor)
-        return norm_
+            tot_norm += torch.norm(tensor)
+        return tot_norm
 
     def display_sizes(self):
         sizes = []
@@ -56,6 +56,9 @@ class TensorTrainFixedRank:
         assert res_tensor.size()[1] == self.out_dim, f"output tensor size must = " \
                                                      f"out_dim : {res_tensor.size()}!={self.out_dim}"
         return res_tensor
+
+    def display_cores(self):
+        self.logger.info(f'Cores : \n{self.core_tensors}\n')
 
 
 if __name__ == '__main__':

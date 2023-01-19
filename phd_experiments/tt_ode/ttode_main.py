@@ -128,19 +128,35 @@ if __name__ == '__main__':
             reg_term = lambda_ * W_Norm if isinstance(model_, TensorTrainODEBLOCK) else \
                 torch.tensor([0.0])
             loss = loss_fn(Y_pred, Y) + reg_term
+            # call backward hooks
             loss.backward()
+
+            # save old norms
+            P_old_norm = model_.get_P().norm().item()
+            W_old_norm = model_.get_W().norm().item()
+            terminal_nn_old_norm = model_.get_terminal_nn().norm().item()
+
+            # update via gradient descent for parameters with required_grad=True
+            optimizer.step()
+
+            # calculate delta norm
+            delta_P_norm = model_.get_P().norm().item() - P_old_norm
+            delta_W_norm = model_.get_W().norm().item()- W_old_norm
+            delta_terminal_nn_norm = model_.get_terminal_nn().norm().item() - terminal_nn_old_norm
+            # Log model state after optimize.step()
+
             if configs_['model-name']=='ttode' and configs_['ttode']['forward_impl_method'] == 'ttode_als':
-                # optimize based on the mix of gradient and ALS :
-                # gradient descent for the terminal neural network and ALS for the TT
+                # apply the tt-als logic for P and W . optimizer.step() should have taken care of terminal_nn
                 with torch.no_grad():
-                    pass
-            else:
-                optimizer.step() # optimize based on builtin gradient descent
+                   pass
+
             batch_losses.append(loss.item())
         epoch_loss = np.mean(batch_losses)
         # print every freq epochs
         if epoch % 10 == 0:
-            logger.info(f'epoch = {epoch} | loss = {epoch_loss}')
+            logger.info(f'epoch = {epoch} | loss = {epoch_loss} | P_norm_delta = {delta_P_norm} , W_norm_delta = '
+                        f'{delta_W_norm} , terminal_nn_norm_delta = {delta_terminal_nn_norm}')
+
         epochs_loss_history.append(epoch_loss)
         effective_window = min(len(epochs_loss_history), configs_['train']['loss_window'])
         rolling_avg_loss = np.mean(epochs_loss_history[-effective_window:])
@@ -153,7 +169,7 @@ if __name__ == '__main__':
     if isinstance(model_, TensorTrainODEBLOCK):
         logger.info(f'for TODE model : \n'
                     f'P = {model_.get_P()}\n'
-                    f'F = {model_.get_F()}\n'
+                    f'F = {model_.get_terminal_nn()}\n'
                     f'M = {model_.get_W()}\n')
     end_time = datetime.datetime.now()
     training_time = end_time - start_time

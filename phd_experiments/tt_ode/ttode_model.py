@@ -4,6 +4,7 @@ import torch
 from torchdiffeq import odeint
 from anode.models import ODEFunc
 from phd_experiments.tn.tt import TensorTrainFixedRank
+from torch import Tensor
 from phd_experiments.tt_ode.basis import Basis
 from phd_experiments.tt_ode.ttode_als import TTOdeAls, TensorTrainContainer
 from phd_experiments.torch_ode_solvers.torch_rk45 import TorchRK45
@@ -20,8 +21,17 @@ class TerminalNeuralNetwork(torch.nn.Module):
                                          torch.nn.ReLU(),
                                          torch.nn.Linear(hidden_dim, out_dim))
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         return self.model(x)
+
+    def norm(self) -> float:
+        tot_norm = 0
+        num_layers = len(self.model)
+        for layer_idx in range(num_layers):
+            if hasattr(self.model[layer_idx],'weight') and isinstance(self.model[layer_idx].weight,Tensor):
+                tot_norm+=self.model[layer_idx].weight.norm()
+
+        return tot_norm
 
 
 class TensorTrainODEBLOCK(torch.nn.Module):
@@ -163,7 +173,8 @@ class TensorTrainODEBLOCK(torch.nn.Module):
         z0 = torch.tensordot(a=x, b=self.P, dims=(z0_contract_dims, P_contract_dims))
         if self.forward_impl_method == 'ttode_als':
             tt_ode_alias = TTOdeAls.apply
-            zf = tt_ode_alias(x,self.P, self.W,self.input_dimensions, self.tt_container, self.tensor_dtype, self.tt_ode_func, self.t_span
+            zf = tt_ode_alias(x, self.P, self.input_dimensions, self.W, self.tt_container, self.tensor_dtype,
+                              self.tt_ode_func, self.t_span
                               , self.basis_fn, self.basis_params)
         elif self.forward_impl_method == 'gen_linear_const':
             """
@@ -265,7 +276,7 @@ class TensorTrainODEBLOCK(torch.nn.Module):
     def get_nfe(self):
         return self.nfe
 
-    def get_F(self):
+    def get_terminal_nn(self):
         return self.terminal_nn
 
     def get_P(self):

@@ -20,12 +20,12 @@ class TensorTrainContainer:
 
 class TTOdeAls(torch.autograd.Function):
     @staticmethod
-    def forward(ctx: Any, x: torch.Tensor,input_dimensions : Iterable[int], P : torch.Tensor,
+    def forward(ctx: Any, x: torch.Tensor, P: torch.Tensor, input_dimensions: Iterable[int],
                 W: TensorTrainFixedRank, tt_container: TensorTrainContainer, tensor_dtype: torch.dtype,
                 tt_ode_func: Callable, t_span: Tuple, basis_fn: str, basis_params: dict) -> torch.Tensor:
         z0_contract_dims = list(range(1, len(input_dimensions) + 1))
         P_contract_dims = list(range(len(input_dimensions)))
-        z0 = torch.tensordot(a=x, b=self.P, dims=(z0_contract_dims, P_contract_dims))
+        z0 = torch.tensordot(a=x, b=P, dims=(z0_contract_dims, P_contract_dims))
         ctx.z0 = z0
         ctx.tt_container = tt_container
         torch_solver = TorchRK45(device=torch.device('cpu'), tensor_dtype=tensor_dtype, is_batch=True)
@@ -38,9 +38,5 @@ class TTOdeAls(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx: Any, grad_outputs: Tensor) -> Any:
-        z_trajectory = ctx.z_trajectory
-        x=6
-        return None
-        # ctx: Any, z0: torch.Tensor, W: TensorTrainFixedRank, tt_container: TensorTrainContainer,
-        #         tensor_dtype: torch.dtype, tt_ode_func: Callable, t_span: Tuple, basis_fn: str,
-        #         basis_params: dict
+        x=10
+        return None, None, None, None, None, None, None, None, None, None, None
