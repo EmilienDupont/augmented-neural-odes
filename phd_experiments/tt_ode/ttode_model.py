@@ -3,6 +3,7 @@ import numpy as np
 import torch
 from torchdiffeq import odeint
 from anode.models import ODEFunc
+from dlra.tt import TensorTrain
 from phd_experiments.tn.tt import TensorTrainFixedRank
 from torch import Tensor
 from phd_experiments.tt_ode.basis import Basis
@@ -28,8 +29,8 @@ class TerminalNeuralNetwork(torch.nn.Module):
         tot_norm = 0
         num_layers = len(self.model)
         for layer_idx in range(num_layers):
-            if hasattr(self.model[layer_idx],'weight') and isinstance(self.model[layer_idx].weight,Tensor):
-                tot_norm+=self.model[layer_idx].weight.norm()
+            if hasattr(self.model[layer_idx], 'weight') and isinstance(self.model[layer_idx].weight, Tensor):
+                tot_norm += self.model[layer_idx].weight.norm()
 
         return tot_norm
 
@@ -118,17 +119,23 @@ class TensorTrainODEBLOCK(torch.nn.Module):
 
         # self.W = torch.nn.Parameter(
         #     torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=W_dims))
-        D_a = tensor_dimensions[0]  # assume tensor dimensions is for length 1 : i.e. project vector to vector
+        D_z = tensor_dimensions[0]  # assume tensor dimensions is for length 1 : i.e. project vector to vector
+        # FIXME tensor dimension can be simply and integer not a list
+
         # TODO support list of ranks or adaptive using ALS / DMRG ??
         assert isinstance(tt_rank, int), "Now only supported fixed-rank TT"
         # FIXME TT structure assume poly basis fun
         if self.forward_impl_method == 'ttode_als':
-            self.W = TensorTrainFixedRank(order=D_a + 1, core_input_dim=self.basis_params['deg'] + 1, out_dim=D_a,
+            basis_dim = self.basis_params['deg']
+            tt_dims = [basis_dim] * (D_z + 1) # basis_dims
+            core_list = TensorTrainODEBLOCK.generate_tt_cores(ranks=[tt_rank] * D_z, basis_dim=self.basis_params['deg'])
+            dummy_tt = TensorTrain(dims=tt_dims, comp_list=core_list)
+            self.W = TensorTrainFixedRank(order=D_z + 1, core_input_dim=self.basis_params['deg'] + 1, out_dim=D_z,
                                           fixed_rank=self.tt_rank, requires_grad=False)  # not optimizable by grad
             self.P = torch.nn.Parameter(torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=P_dims),
                                         requires_grad=False)
         else:
-            self.W = TensorTrainFixedRank(order=D_a + 1, core_input_dim=self.basis_params['deg'] + 1, out_dim=D_a,
+            self.W = TensorTrainFixedRank(order=D_z + 1, core_input_dim=self.basis_params['deg'] + 1, out_dim=D_z,
                                           fixed_rank=self.tt_rank, requires_grad=True)  # optimizable by grad
             self.P = torch.nn.Parameter(torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=P_dims),
                                         requires_grad=True)
@@ -141,6 +148,30 @@ class TensorTrainODEBLOCK(torch.nn.Module):
         if t_eval is not None:
             assert t_eval[0] >= t_span[0] and t_eval[1] <= t_span[1], "t_eval must be subset of t_span ranges"
         self.monitor = {'W': [self.W], 'P': [self.P], 'F': [self.terminal_nn]}
+
+    @staticmethod
+    def generate_tt_cores(ranks: List[int], basis_dim: int) -> List[Tensor]:
+        """
+
+        """
+        # TODO basis_dim : assume all basis have the same dim , generalize
+
+        # TODO Assume the case where tensor-train contracted with basis functions
+        #  will result a scalar about not a vector
+        # tensor of order ranks + 1
+        tensor_uniform = torch.distributions.Uniform(low=0.01, high=0.5)
+        cores = []
+        for i in range(len(ranks)):
+            # leftmost core
+            if i == 0:
+                cores.append(tensor_uniform.sample(sample_shape=torch.Size([1, basis_dim, ranks[i]])))
+            # inner core
+            else:
+                cores.append(
+                    tensor_uniform.sample(sample_shape=torch.Size([ranks[i - 1], basis_dim, ranks[i]])))
+        # rightmost core
+        cores.append(tensor_uniform.sample(sample_shape=torch.Size([ranks[len(ranks) - 1], basis_dim, 1])))
+        return cores
 
     def forward(self, x: torch.Tensor):
         """
