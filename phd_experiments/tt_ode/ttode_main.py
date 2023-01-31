@@ -1,17 +1,23 @@
 import datetime
 import logging
 from argparse import ArgumentParser
+from typing import List
 
 import numpy as np
 import torch
 import yaml
+from torch import Tensor
+
 from anode.discrete_models import ResNet
 from anode.models import ODENet
+from dlra.tt import TensorTrain
 from experiments.dataloaders import Data1D, ConcentricSphere
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 from torch.nn import SmoothL1Loss
 from torch.optim import Adam
+
+from phd_experiments.tn.tt import TensorTrainFixedRank
 from phd_experiments.tt_ode.ttode_model import TensorTrainODEBLOCK
 
 MODEL_NAMES = ['resnet', 'node', 'anode', 'ttode']
@@ -83,6 +89,18 @@ def get_parser():
     return parser
 
 
+def get_W_norm(W: [Tensor, TensorTrain, TensorTrainFixedRank]) -> Tensor:
+    if isinstance(W, (Tensor, TensorTrainFixedRank)):
+        W_Norm = W.norm()
+    elif isinstance(W, list) and all([isinstance(w, TensorTrain) for w in W]):
+        W_Norm = sum([w.norm() for w in W])
+    else:
+        raise ValueError(f'W is not of supported type , its type is : {type(W)}, and supported types are '
+                         f'{[Tensor, TensorTrainFixedRank, List[TensorTrain]]}')
+    assert isinstance(W_Norm, Tensor) and W_Norm.size() == torch.Size([]), f"W_norm must be float but of type {W_Norm}"
+    return W_Norm
+
+
 def get_loss(loss_name: str):
     if loss_name == 'smoothl1loss':
         return SmoothL1Loss()
@@ -124,16 +142,14 @@ if __name__ == '__main__':
             optimizer.zero_grad()
             Y_pred = model_(X)
             forward_call_count += 1
-            W_Norm = lambda_ * model_.get_W().norm()
-            reg_term = lambda_ * W_Norm if isinstance(model_, TensorTrainODEBLOCK) else \
-                torch.tensor([0.0])
+            W_norm = get_W_norm(model_.get_W())
+            reg_term = lambda_ * W_norm
             loss = loss_fn(Y_pred, Y) + reg_term
             # call backward hooks
             loss.backward()
-
             # save old norms
             P_old_norm = model_.get_P().norm().item()
-            W_old_norm = model_.get_W().norm().item()
+            W_old_norm = get_W_norm(model_.get_W())
             terminal_nn_old_norm = model_.get_terminal_nn().norm().item()
 
             # update via gradient descent for parameters with required_grad=True
@@ -141,14 +157,14 @@ if __name__ == '__main__':
 
             # calculate delta norm
             delta_P_norm = model_.get_P().norm().item() - P_old_norm
-            delta_W_norm = model_.get_W().norm().item()- W_old_norm
+            delta_W_norm = get_W_norm(model_.get_W()) - W_old_norm
             delta_terminal_nn_norm = model_.get_terminal_nn().norm().item() - terminal_nn_old_norm
             # Log model state after optimize.step()
 
-            if configs_['model-name']=='ttode' and configs_['ttode']['forward_impl_method'] == 'ttode_als':
+            if configs_['model-name'] == 'ttode' and configs_['ttode']['forward_impl_method'] == 'ttode_als':
                 # apply the tt-als logic for P and W . optimizer.step() should have taken care of terminal_nn
                 with torch.no_grad():
-                   pass
+                    pass
 
             batch_losses.append(loss.item())
         epoch_loss = np.mean(batch_losses)

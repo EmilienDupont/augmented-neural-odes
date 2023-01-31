@@ -43,7 +43,7 @@ class TensorTrainODEBLOCK(torch.nn.Module):
     def __init__(self, input_dimensions: List[int], output_dimensions: List[int],
                  tensor_dimensions: List[int], basis_str: str, t_span: Tuple, non_linearity: None | str = None,
                  t_eval: List = None, forward_impl_method: str = "batch_torch",
-                 tensor_dtype: torch.dtype = torch.float32, tt_rank=Union[int | list[int]]):
+                 tensor_dtype: torch.dtype = torch.float64, tt_rank=Union[int | list[int]]):
         super().__init__()
         # FIXME add explicit params check
         self.tensor_dtype = tensor_dtype
@@ -124,14 +124,16 @@ class TensorTrainODEBLOCK(torch.nn.Module):
 
         # TODO support list of ranks or adaptive using ALS / DMRG ??
         assert isinstance(tt_rank, int), "Now only supported fixed-rank TT"
-        # FIXME TT structure assume poly basis fun
+
         if self.forward_impl_method == 'ttode_als':
-            basis_dim = self.basis_params['deg']
-            tt_dims = [basis_dim] * (D_z + 1) # basis_dims
-            core_list = TensorTrainODEBLOCK.generate_tt_cores(ranks=[tt_rank] * D_z, basis_dim=self.basis_params['deg'])
-            dummy_tt = TensorTrain(dims=tt_dims, comp_list=core_list)
-            self.W = TensorTrainFixedRank(order=D_z + 1, core_input_dim=self.basis_params['deg'] + 1, out_dim=D_z,
-                                          fixed_rank=self.tt_rank, requires_grad=False)  # not optimizable by grad
+            # FIXME TT structure assume poly basis fun
+            self.W = [TensorTrainODEBLOCK.get_tt(ranks=[self.tt_rank] * int(D_z),
+                                                 basis_dim=int(self.basis_params['deg']) + 1)] * int(D_z)
+            # the + 1 in int(self.basis_params['deg'])+1 is for deg_poly i.e x^0 , x^1 , .. x^deg
+
+            # commented code below for self.W just for ref.
+            # self.W = TensorTrainFixedRank(order=D_z + 1, core_input_dim=self.basis_params['deg'] + 1, out_dim=D_z,
+            #                               fixed_rank=self.tt_rank, requires_grad=False)  # not optimizable by grad
             self.P = torch.nn.Parameter(torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=P_dims),
                                         requires_grad=False)
         else:
@@ -148,6 +150,16 @@ class TensorTrainODEBLOCK(torch.nn.Module):
         if t_eval is not None:
             assert t_eval[0] >= t_span[0] and t_eval[1] <= t_span[1], "t_eval must be subset of t_span ranges"
         self.monitor = {'W': [self.W], 'P': [self.P], 'F': [self.terminal_nn]}
+
+    @staticmethod
+    def get_tt(ranks: List[int], basis_dim: int) -> TensorTrain:
+        """
+
+        """
+        order = len(ranks) + 1
+        core_list = TensorTrainODEBLOCK.generate_tt_cores(ranks=ranks, basis_dim=basis_dim)
+        # FIXME assume fixed basis-dim for all orders
+        return TensorTrain(dims=[basis_dim] * order, comp_list=core_list)
 
     @staticmethod
     def generate_tt_cores(ranks: List[int], basis_dim: int) -> List[Tensor]:
@@ -253,7 +265,8 @@ class TensorTrainODEBLOCK(torch.nn.Module):
         y_hat = self.terminal_nn(zf)
         return y_hat
 
-    def tt_ode_func(self, t: float, z: torch.Tensor, W: TensorTrainFixedRank, basis_fn: str, basis_params: dict):
+    def tt_ode_func(self, t: float, z: torch.Tensor, W: [List[TensorTrain] | TensorTrainFixedRank], basis_fn: str,
+                    basis_params: dict) -> torch.Tensor:
         # TODO batched dot (what we need)
         # https://pytorch.org/tutorials/prototype/vmap_recipe.html
         """
@@ -265,6 +278,7 @@ class TensorTrainODEBLOCK(torch.nn.Module):
         W : Coeff tensor
         non_linearity
         Returns
+        dz/dt : torch.Tensor -> bxDz ( assuming z is a vector) , where b is the batch dimension
         -------
 
         """
@@ -294,7 +308,10 @@ class TensorTrainODEBLOCK(torch.nn.Module):
 
         elif basis_fn == 'poly':
             Phi = Basis.poly(x=z, t=t, poly_deg=basis_params['deg'])
-            dzdt = W.contract_basis(basis_tensors=Phi)
+            if isinstance(W, TensorTrainFixedRank):
+                dzdt = W.contract_basis(basis_tensors=Phi)
+            elif isinstance(W, list) and all([isinstance(w, TensorTrain) for w in W]):  # FIXME might be slow
+                dzdt = torch.concat(tensors=list(map(lambda w: w.dot_rank_one(rank1obj=Phi), W)), dim=1)
         elif basis_fn == 'trig':
             Phi = Basis.trig(z, t, float(basis_params['a']), float(basis_params['b']), float(basis_params['c']))
             W_contract_dims = list(range(len(self.tensor_dimensions), len(W.size())))
@@ -313,5 +330,5 @@ class TensorTrainODEBLOCK(torch.nn.Module):
     def get_P(self):
         return self.P
 
-    def get_W(self):
+    def get_W(self) -> [TensorTrainFixedRank,Tensor, List[Tensor]]:
         return self.W
