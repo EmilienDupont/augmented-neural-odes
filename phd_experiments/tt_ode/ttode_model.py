@@ -1,13 +1,14 @@
 from typing import List, Tuple, Callable, Union
 import numpy as np
 import torch
+from torch.nn import Parameter, ParameterList
 from torchdiffeq import odeint
 from anode.models import ODEFunc
 from dlra.tt import TensorTrain
 from phd_experiments.tn.tt import TensorTrainFixedRank
 from torch import Tensor
 from phd_experiments.tt_ode.basis import Basis
-from phd_experiments.tt_ode.ttode_als import TTOdeAls, TensorTrainContainer
+from phd_experiments.tt_ode.ttode_als import TTOdeAls, TensorTrainContainer, Forward2
 from phd_experiments.torch_ode_solvers.torch_rk45 import TorchRK45
 
 
@@ -43,9 +44,11 @@ class TensorTrainODEBLOCK(torch.nn.Module):
     def __init__(self, input_dimensions: List[int], output_dimensions: List[int],
                  tensor_dimensions: List[int], basis_str: str, t_span: Tuple, non_linearity: None | str = None,
                  t_eval: List = None, forward_impl_method: str = "batch_torch",
-                 tensor_dtype: torch.dtype = torch.float64, tt_rank=Union[int | list[int]]):
+                 tensor_dtype: torch.dtype = torch.float64, tt_rank=Union[int | list[int]],
+                 custom_autograd_fn: bool = False):
         super().__init__()
         # FIXME add explicit params check
+        self.custom_autograd_fn = custom_autograd_fn
         self.tensor_dtype = tensor_dtype
         self.forward_impl_method = forward_impl_method
         self.output_dimensions = output_dimensions
@@ -127,15 +130,25 @@ class TensorTrainODEBLOCK(torch.nn.Module):
 
         if self.forward_impl_method == 'ttode_als':
             # FIXME TT structure assume poly basis fun
+            # FIXME set back requires_grad = False when using TT-ALS for optimization, just testing how things work
+            #   for grad_opt with tt_cores
             self.W = [TensorTrainODEBLOCK.get_tt(ranks=[self.tt_rank] * int(D_z),
-                                                 basis_dim=int(self.basis_params['deg']) + 1)] * int(D_z)
+                                                 basis_dim=int(self.basis_params['deg']) + 1,
+                                                 requires_grad=True)] * int(D_z)
+            # FIXME debug code , delete
+            for w in self.W:
+                for G in w.comps:
+                    is_leaf = G.is_leaf
+            # FIXME ENd debug code
             # the + 1 in int(self.basis_params['deg'])+1 is for deg_poly i.e x^0 , x^1 , .. x^deg
 
             # commented code below for self.W just for ref.
             # self.W = TensorTrainFixedRank(order=D_z + 1, core_input_dim=self.basis_params['deg'] + 1, out_dim=D_z,
             #                               fixed_rank=self.tt_rank, requires_grad=False)  # not optimizable by grad
+            # TODO understand why should set required_grad for P to true to fire the backward call for TT_ALS.apply
+            #   implementation for the auto_grad fn even if W has tt-cores with requires_param = 1
             self.P = torch.nn.Parameter(torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=P_dims),
-                                        requires_grad=False)
+                                        requires_grad=True)
         else:
             self.W = TensorTrainFixedRank(order=D_z + 1, core_input_dim=self.basis_params['deg'] + 1, out_dim=D_z,
                                           fixed_rank=self.tt_rank, requires_grad=True)  # optimizable by grad
@@ -152,18 +165,18 @@ class TensorTrainODEBLOCK(torch.nn.Module):
         self.monitor = {'W': [self.W], 'P': [self.P], 'F': [self.terminal_nn]}
 
     @staticmethod
-    def get_tt(ranks: List[int], basis_dim: int) -> TensorTrain:
+    def get_tt(ranks: List[int], basis_dim: int, requires_grad) -> TensorTrain:
         """
-
+        get dlra tt structure
         """
         order = len(ranks) + 1
-        core_list = TensorTrainODEBLOCK.generate_tt_cores(ranks=ranks, basis_dim=basis_dim)
+        core_list = TensorTrainODEBLOCK.generate_tt_cores(ranks=ranks, basis_dim=basis_dim, requires_grad=requires_grad)
         # FIXME assume fixed basis-dim for all orders
         return TensorTrain(dims=[basis_dim] * order, comp_list=core_list)
 
     @staticmethod
-    def generate_tt_cores(ranks: List[int], basis_dim: int) -> List[Tensor]:
-        """
+    def generate_tt_cores(ranks: List[int], basis_dim: int, requires_grad) -> ParameterList:
+        """List
 
         """
         # TODO basis_dim : assume all basis have the same dim , generalize
@@ -176,14 +189,18 @@ class TensorTrainODEBLOCK(torch.nn.Module):
         for i in range(len(ranks)):
             # leftmost core
             if i == 0:
-                cores.append(tensor_uniform.sample(sample_shape=torch.Size([1, basis_dim, ranks[i]])))
+                core = Parameter(tensor_uniform.sample(sample_shape=torch.Size([1, basis_dim, ranks[i]])),
+                                 requires_grad=requires_grad)
             # inner core
             else:
-                cores.append(
-                    tensor_uniform.sample(sample_shape=torch.Size([ranks[i - 1], basis_dim, ranks[i]])))
+
+                core = Parameter(tensor_uniform.sample(sample_shape=torch.Size([ranks[i - 1], basis_dim, ranks[i]])),
+                                 requires_grad=requires_grad)
+            cores.append(core)
         # rightmost core
-        cores.append(tensor_uniform.sample(sample_shape=torch.Size([ranks[len(ranks) - 1], basis_dim, 1])))
-        return cores
+        cores.append(Parameter(tensor_uniform.sample(sample_shape=torch.Size([ranks[len(ranks) - 1], basis_dim, 1])),
+                               requires_grad=requires_grad))
+        return ParameterList(values=cores)
 
     def forward(self, x: torch.Tensor):
         """
@@ -215,10 +232,19 @@ class TensorTrainODEBLOCK(torch.nn.Module):
         P_contract_dims = list(range(len(self.input_dimensions)))
         z0 = torch.tensordot(a=x, b=self.P, dims=(z0_contract_dims, P_contract_dims))
         if self.forward_impl_method == 'ttode_als':
-            tt_ode_alias = TTOdeAls.apply
-            zf = tt_ode_alias(x, self.P, self.input_dimensions, self.W, self.tt_container, self.tensor_dtype,
-                              self.tt_ode_func, self.t_span
-                              , self.basis_fn, self.basis_params)
+            if self.custom_autograd_fn:
+                tt_ode_alias = TTOdeAls.apply
+                zf = tt_ode_alias(x, self.P, self.input_dimensions, self.W, self.tt_container, self.tensor_dtype,
+                                  self.tt_ode_func, self.t_span
+                                  , self.basis_fn, self.basis_params)
+            else:
+                zf, _ = Forward2.forward2(x, self.P, self.input_dimensions, self.W, self.tensor_dtype, self.tt_ode_func,
+                                          self.t_span, self.basis_fn, self.basis_params)
+            # FIXME debug code
+            zf_requires_grad = zf.requires_grad
+            x=10
+            # END FIXME debug code
+
         elif self.forward_impl_method == 'gen_linear_const':
             """
             https://www.stat.uchicago.edu/~lekheng/work/mcsc2.pdf 
@@ -230,6 +256,7 @@ class TensorTrainODEBLOCK(torch.nn.Module):
             torch_solver = TorchRK45(device=torch.device('cpu'), tensor_dtype=self.tensor_dtype, is_batch=True)
             zf = torch_solver.solve_ivp(func=self.tt_ode_func, t_span=self.t_span, z0=z0,
                                         args=(self.W, self.basis_fn, self.basis_params)).zf
+            x=9
 
         # this if branch is just left for verifying results when needed (verify my modification for batch rk45)
         elif self.forward_impl_method == 'single_torch':
@@ -330,5 +357,5 @@ class TensorTrainODEBLOCK(torch.nn.Module):
     def get_P(self):
         return self.P
 
-    def get_W(self) -> [TensorTrainFixedRank,Tensor, List[Tensor]]:
+    def get_W(self) -> [TensorTrainFixedRank, Tensor, List[Tensor]]:
         return self.W

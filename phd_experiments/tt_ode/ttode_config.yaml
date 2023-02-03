@@ -15,7 +15,7 @@ flip1d:
   n_test: 200
 
 concentric-sphere:
-  input_dim: 5
+  input_dim: 2
   output_dim: 1
   inner_range: 0.,0.5 # ranges must be tuple of floats
   outer_range: 1.,1.5
@@ -59,7 +59,8 @@ ttode: # tensor ode
   t_span: [ 0,0.01 ] # FIXME : higher tf => higher depth => h(delta t) underflow problem
   # TODO Understand : why when tf is large (e.g. 10) we get underflow
   # TODO more experiment with tf : seems crucial to accuracy and running time
-  forward_impl_method: "ttode_als"
+  forward_impl_method: "mytorch"
+  custom_autograd_fn : False
   lambda : 0.1 # TODO make it fn (Coeff tensor order)
   tt_rank : 5
 

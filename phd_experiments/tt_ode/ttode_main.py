@@ -56,7 +56,8 @@ def get_model(configs: dict):
                                    tensor_dimensions=tensor_dims, basis_str=configs[configs['model-name']]['basis'],
                                    t_span=tuple(configs[configs['model-name']]['t_span']), non_linearity=non_linearity,
                                    forward_impl_method=configs[configs['model-name']]['forward_impl_method'],
-                                   tt_rank=tt_rank)
+                                   tt_rank=tt_rank,
+                                   custom_autograd_fn=configs[configs['model-name']]['custom_autograd_fn'])
 
 
 def get_data_loader(dataset_name: str, configs: dict):
@@ -126,7 +127,15 @@ if __name__ == '__main__':
     train_dataloader_, test_dataloader_ = get_data_loader(dataset_name=configs_['dataset-name'], configs=configs_)
     loss_fn = get_loss(loss_name=configs_['train']['loss'])
     target_flip = True
-    optimizer = Adam(model_.parameters(), lr=float(configs_['train']['lr']))
+
+    # FIXME hack to make sure all needed parameters are added to optimizer
+    opt_params = [model_.get_P()]
+    opt_params.extend(model_.get_terminal_nn().parameters())
+    W = model_.get_W()
+    if isinstance(W,list) and all([isinstance(w,TensorTrain) for w in W]):
+        for w in W:
+            opt_params.extend(w.parameters())
+    optimizer = Adam(opt_params, lr=float(configs_['train']['lr']))
     loss = torch.tensor([np.Inf])
     epochs_loss_history = []
     logger.info(f"""Starting training with n_epochs = {configs_['train']['n_epochs']},loss_threshold {
@@ -135,7 +144,7 @@ if __name__ == '__main__':
     start_time = datetime.datetime.now()
     batch_size = configs_['train']['batch_size']
     forward_call_count = 0
-    lambda_ = configs_[configs_['model-name']]['lambda'] if configs_['model-name'] == 'tode' else 0
+    lambda_ = configs_[configs_['model-name']]['lambda'] if configs_['model-name'] == 'ttode' else 0
     for epoch in tqdm(range(1, configs_['train']['n_epochs'] + 1), desc="Epochs"):
         batch_losses = []
         for batch_idx, (X, Y) in enumerate(train_dataloader_):
@@ -153,25 +162,55 @@ if __name__ == '__main__':
             terminal_nn_old_norm = model_.get_terminal_nn().norm().item()
 
             # update via gradient descent for parameters with required_grad=True
+            # FIXME , hack to amplify W grads
+            if isinstance(model_.get_W(), list) and all([isinstance(w, TensorTrain) for w in model_.get_W()]):
+                for w in model_.get_W():
+                    for G in w.comps:
+                        G.grad *= 1
+            # FIXME End hack
+
+            # FIXME , remove quick hack to manual compute parameters update and see how that compares to optimize steps
+            # P_new_manual = model_.get_P()-float(configs_['train']['lr'])* model_.get_P().grad
+            # FIXME hack , manually update W components till we find why it is not updated
+            W = model_.get_W()
+            # https://medium.com/@mrityu.jha/understanding-the-grad-of-autograd-fc8d266fd6cf
+            if isinstance(W, TensorTrainFixedRank):
+                pass
+            elif isinstance(W, list) and all([isinstance(w, TensorTrain) for w in W]):
+                for i, w in enumerate(model_.get_W()):
+                    for j, G in enumerate(w.comps):
+                        is_leaf = G.is_leaf
+                        model_.get_W()[i].comps[j] -= float(configs_['train']['lr']) * model_.get_W()[i].comps[j].grad
+
+            # TODO
+            #   1. Understand why optimizer step doesn't update W even when W Grads are good enough ??
+            #   2. Emulate optimize.step with wit
+
             optimizer.step()
 
             # calculate delta norm
             delta_P_norm = model_.get_P().norm().item() - P_old_norm
-            delta_W_norm = get_W_norm(model_.get_W()) - W_old_norm
+            # P_diff_opt_manual = torch.norm(P_new_manual - model_.get_P())
+            # W_new_norm = get_W_norm(model_.get_W())
+            # delta_W_norm = W_new_norm - W_old_norm
             delta_terminal_nn_norm = model_.get_terminal_nn().norm().item() - terminal_nn_old_norm
             # Log model state after optimize.step()
 
-            if configs_['model-name'] == 'ttode' and configs_['ttode']['forward_impl_method'] == 'ttode_als':
-                # apply the tt-als logic for P and W . optimizer.step() should have taken care of terminal_nn
-                with torch.no_grad():
-                    pass
+            # if configs_['model-name'] == 'ttode' and configs_['ttode']['forward_impl_method'] == 'ttode_als':
+            #     # apply the tt-als logic for P and W . optimizer.step() should have taken care of terminal_nn
+            #     if configs_['model-name'] == 'ttode' and
+            #     configs_['ttode']['custom_autograd_fn'] == True:
+            #         with torch.no_grad():
+            #             pass
+            #     else:
+            #         pass
 
             batch_losses.append(loss.item())
         epoch_loss = np.mean(batch_losses)
         # print every freq epochs
         if epoch % 10 == 0:
             logger.info(f'epoch = {epoch} | loss = {epoch_loss} | P_norm_delta = {delta_P_norm} , W_norm_delta = '
-                        f'{delta_W_norm} , terminal_nn_norm_delta = {delta_terminal_nn_norm}')
+                        f'{0.0} , terminal_nn_norm_delta = {delta_terminal_nn_norm}')
 
         epochs_loss_history.append(epoch_loss)
         effective_window = min(len(epochs_loss_history), configs_['train']['loss_window'])
@@ -183,7 +222,7 @@ if __name__ == '__main__':
                 loss_threshold = {configs_['train']['loss_threshold']}""")
             break
     if isinstance(model_, TensorTrainODEBLOCK):
-        logger.info(f'for TODE model : \n'
+        logger.info(f'for TT-ODE model : \n'
                     f'P = {model_.get_P()}\n'
                     f'F = {model_.get_terminal_nn()}\n'
                     f'M = {model_.get_W()}\n')
