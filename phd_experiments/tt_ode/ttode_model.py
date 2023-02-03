@@ -9,7 +9,7 @@ from phd_experiments.tt_ode.ttode_utils import full_weight_tensor_contract
 from phd_experiments.torch_ode_solvers.torch_rk45 import TorchRK45
 
 
-class F(torch.nn.Module):
+class Qnn(torch.nn.Module):
     NON_LINEARITIES = ["relu", "sigmoid", "softplus"]
 
     def __init__(self, input_dim, hidden_dim, out_dim):
@@ -114,13 +114,13 @@ class TensorTrainODEBLOCK(torch.nn.Module):
         self.W = TensorTrainFixedRank(order=D_a + 1, core_input_dim=self.basis_params['deg'] + 1, out_dim=D_a,
                                       fixed_rank=self.tt_rank,
                                       requires_grad=True)
-        self.F = F(input_dim=self.tensor_dimensions[0], out_dim=self.output_dimensions[0], hidden_dim=256)
+        self.Q = Qnn(input_dim=self.tensor_dimensions[0], out_dim=self.output_dimensions[0], hidden_dim=256)
 
         # Create solver
         assert t_span[0] < t_span[1], "t_span[0] must be < t_span[1]"
         if t_eval is not None:
             assert t_eval[0] >= t_span[0] and t_eval[1] <= t_span[1], "t_eval must be subset of t_span ranges"
-        self.monitor = {'W': [self.W], 'P': [self.P], 'F': [self.F]}
+        self.monitor = {'W': [self.W], 'P': [self.P], 'F': [self.Q]}
 
     def forward(self, x: torch.Tensor):
         """
@@ -152,7 +152,7 @@ class TensorTrainODEBLOCK(torch.nn.Module):
         # A_contract_dims = list(range(1, len(self.tensor_dimensions) + 1))
         # F_contract_dims = list(range(0, len(self.tensor_dimensions)))
         # y_hat = torch.tensordot(a=A_f, b=self.F, dims=(A_contract_dims, F_contract_dims))
-        y_hat = self.F(A_f)
+        y_hat = self.Q(A_f)
         return y_hat
 
     def forward_impl(self, A0: torch.Tensor) -> torch.Tensor:
@@ -265,8 +265,8 @@ class TensorTrainODEBLOCK(torch.nn.Module):
     def get_nfe(self):
         return self.nfe
 
-    def get_F(self):
-        return self.F
+    def get_Q(self):
+        return self.Q
 
     def get_P(self):
         return self.P

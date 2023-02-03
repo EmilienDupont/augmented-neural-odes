@@ -101,6 +101,10 @@ if __name__ == '__main__':
     args = parser.parse_args()
     with open(args.config) as f:
         configs_ = yaml.load(stream=f, Loader=yaml.FullLoader)
+    # debug mode check
+    assert isinstance(configs_['debug'], bool), " Debug flag must be bool"
+    if configs_['debug']:
+        logger.info(f'Running in debug mode')
     logger.info(f"""Experimenting with model {configs_['model-name']} and dataset {configs_['dataset-name']}""")
     if configs_['model-name'] == 'ttode':
         logger.info(f"""Forward-Integration method is : {configs_[configs_['model-name']]['forward_impl_method']}""")
@@ -129,12 +133,22 @@ if __name__ == '__main__':
                 torch.tensor([0.0])
             loss = loss_fn(Y_pred, Y) + reg_term
             loss.backward()
+            if configs_['debug']:
+                W_norm_before = model_.get_W().norm().item()
+
             optimizer.step()
+            if configs_['debug']:
+                W_norm_after = model_.get_W().norm().item()
+
             batch_losses.append(loss.item())
         epoch_loss = np.mean(batch_losses)
         # print every freq epochs
         if epoch % 10 == 0:
             logger.info(f'epoch = {epoch} | loss = {epoch_loss}')
+            if configs_['debug']:
+                delta_W = W_norm_after-W_norm_before
+                logger.info(f'Delta W = {delta_W}')
+
         epochs_loss_history.append(epoch_loss)
         effective_window = min(len(epochs_loss_history), configs_['train']['loss_window'])
         rolling_avg_loss = np.mean(epochs_loss_history[-effective_window:])
@@ -145,10 +159,10 @@ if __name__ == '__main__':
                 loss_threshold = {configs_['train']['loss_threshold']}""")
             break
     if isinstance(model_, TensorTrainODEBLOCK):
-        logger.info(f'for TODE model : \n'
+        logger.info(f'for TT-ODE model : \n'
                     f'P = {model_.get_P()}\n'
-                    f'F = {model_.get_F()}\n'
-                    f'M = {model_.get_W()}\n')
+                    f'Q = {model_.get_Q()}\n'
+                    f'W = {model_.get_W()}\n')
     end_time = datetime.datetime.now()
     training_time = end_time - start_time
     total_nfe = model_.get_nfe() if isinstance(model_, (ODENet, TensorTrainODEBLOCK)) else None

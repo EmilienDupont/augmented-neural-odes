@@ -1,11 +1,14 @@
-# 1) Model selection - see sec 6
+# 1)
+debug : True
+# 2) Model selection - see sec 6
 model-name: 'ttode'
-# 2) torch configs
+# 3) torch configs
 torch:
   device: "cpu"
-# 3) select a data-set. See sec 4
+
+# 4) select a data-set. See sec 4
 dataset-name: 'concentric-sphere'
-# 4) datasets
+# 5) datasets
 # each dataset must have input_dim,output_dim
 flip1d:
   input_dim: 1
@@ -24,7 +27,7 @@ concentric-sphere:
   n_inner_test: 100
   n_outer_test: 100
 
-# 5 ) General train params
+# 6 ) General train params
 train:
   n_epochs: 500
   lr: 1e-3
@@ -34,7 +37,7 @@ train:
   loss_window: 10
   loss_threshold: 1e-4 # must be adjusted based on dataset
 
-# 6 ) Model-specific params
+# 7 ) Model-specific params
 resnet:
   hidden_dim: 32
   num_layers: 20
