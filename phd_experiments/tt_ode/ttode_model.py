@@ -29,10 +29,10 @@ class TerminalNeuralNetwork(torch.nn.Module):
     def norm(self) -> float:
         tot_norm = 0
         num_layers = len(self.model)
-        for layer_idx in range(num_layers):
-            if hasattr(self.model[layer_idx], 'weight') and isinstance(self.model[layer_idx].weight, Tensor):
-                tot_norm += self.model[layer_idx].weight.norm()
-
+        for i in range(num_layers):
+            if isinstance(self.model[i], torch.nn.Linear):
+                tot_norm += self.model[i].weight.norm()
+                tot_norm += self.model[i].weight.norm()
         return tot_norm
 
 
@@ -242,7 +242,7 @@ class TensorTrainODEBLOCK(torch.nn.Module):
                                           self.t_span, self.basis_fn, self.basis_params)
             # FIXME debug code
             zf_requires_grad = zf.requires_grad
-            x=10
+            x = 10
             # END FIXME debug code
 
         elif self.forward_impl_method == 'gen_linear_const':
@@ -256,7 +256,7 @@ class TensorTrainODEBLOCK(torch.nn.Module):
             torch_solver = TorchRK45(device=torch.device('cpu'), tensor_dtype=self.tensor_dtype, is_batch=True)
             zf = torch_solver.solve_ivp(func=self.tt_ode_func, t_span=self.t_span, z0=z0,
                                         args=(self.W, self.basis_fn, self.basis_params)).zf
-            x=9
+            x = 9
 
         # this if branch is just left for verifying results when needed (verify my modification for batch rk45)
         elif self.forward_impl_method == 'single_torch':
