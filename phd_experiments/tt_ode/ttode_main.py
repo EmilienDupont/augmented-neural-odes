@@ -130,7 +130,7 @@ if __name__ == '__main__':
 
     # FIXME hack to make sure all needed parameters are added to optimizer
     opt_params = [model_.get_P()]
-    opt_params.extend(model_.get_terminal_nn().parameters())
+    opt_params.extend(model_.get_Q().parameters())
     W = model_.get_W()
     if isinstance(W,list) and all([isinstance(w,TensorTrain) for w in W]):
         for w in W:
@@ -159,7 +159,7 @@ if __name__ == '__main__':
             # save old norms
             P_old_norm = model_.get_P().norm().item()
             W_old_norm = get_W_norm(model_.get_W())
-            terminal_nn_old_norm = model_.get_terminal_nn().norm().item()
+            Q_old_norm = model_.get_Q().norm().item()
 
             # update via gradient descent for parameters with required_grad=True
             # FIXME , hack to amplify W grads
@@ -172,15 +172,15 @@ if __name__ == '__main__':
             # FIXME , remove quick hack to manual compute parameters update and see how that compares to optimize steps
             # P_new_manual = model_.get_P()-float(configs_['train']['lr'])* model_.get_P().grad
             # FIXME hack , manually update W components till we find why it is not updated
-            W = model_.get_W()
-            # https://medium.com/@mrityu.jha/understanding-the-grad-of-autograd-fc8d266fd6cf
-            if isinstance(W, TensorTrainFixedRank):
-                pass
-            elif isinstance(W, list) and all([isinstance(w, TensorTrain) for w in W]):
-                for i, w in enumerate(model_.get_W()):
-                    for j, G in enumerate(w.comps):
-                        is_leaf = G.is_leaf
-                        model_.get_W()[i].comps[j] -= float(configs_['train']['lr']) * model_.get_W()[i].comps[j].grad
+            # W = model_.get_W()
+            # # https://medium.com/@mrityu.jha/understanding-the-grad-of-autograd-fc8d266fd6cf
+            # if isinstance(W, TensorTrainFixedRank):
+            #     pass
+            # elif isinstance(W, list) and all([isinstance(w, TensorTrain) for w in W]):
+            #     for i, w in enumerate(model_.get_W()):
+            #         for j, G in enumerate(w.comps):
+            #             is_leaf = G.is_leaf
+            #             model_.get_W()[i].comps[j] -= float(configs_['train']['lr']) * model_.get_W()[i].comps[j].grad
 
             # TODO
             #   1. Understand why optimizer step doesn't update W even when W Grads are good enough ??
@@ -191,9 +191,9 @@ if __name__ == '__main__':
             # calculate delta norm
             delta_P_norm = model_.get_P().norm().item() - P_old_norm
             # P_diff_opt_manual = torch.norm(P_new_manual - model_.get_P())
-            # W_new_norm = get_W_norm(model_.get_W())
-            # delta_W_norm = W_new_norm - W_old_norm
-            delta_terminal_nn_norm = model_.get_terminal_nn().norm().item() - terminal_nn_old_norm
+            W_new_norm = get_W_norm(model_.get_W())
+            delta_W_norm = W_new_norm - W_old_norm
+            delta_Q = model_.get_Q().norm().item() - Q_old_norm
             # Log model state after optimize.step()
 
             # if configs_['model-name'] == 'ttode' and configs_['ttode']['forward_impl_method'] == 'ttode_als':
@@ -210,7 +210,7 @@ if __name__ == '__main__':
         # print every freq epochs
         if epoch % 10 == 0:
             logger.info(f'epoch = {epoch} | loss = {epoch_loss} | P_norm_delta = {delta_P_norm} , W_norm_delta = '
-                        f'{0.0} , terminal_nn_norm_delta = {delta_terminal_nn_norm}')
+                        f'{delta_W_norm} , Q_delta = {delta_Q}')
 
         epochs_loss_history.append(epoch_loss)
         effective_window = min(len(epochs_loss_history), configs_['train']['loss_window'])
@@ -224,7 +224,7 @@ if __name__ == '__main__':
     if isinstance(model_, TensorTrainODEBLOCK):
         logger.info(f'for TT-ODE model : \n'
                     f'P = {model_.get_P()}\n'
-                    f'F = {model_.get_terminal_nn()}\n'
+                    f'F = {model_.get_Q()}\n'
                     f'M = {model_.get_W()}\n')
     end_time = datetime.datetime.now()
     training_time = end_time - start_time

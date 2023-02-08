@@ -59,8 +59,8 @@ ttode: # tensor ode
   t_span: [ 0,0.01 ] # FIXME : higher tf => higher depth => h(delta t) underflow problem
   # TODO Understand : why when tf is large (e.g. 10) we get underflow
   # TODO more experiment with tf : seems crucial to accuracy and running time
-  forward_impl_method: "mytorch"
-  custom_autograd_fn : False
+  forward_impl_method: "ttode_als"
+  custom_autograd_fn : True
   lambda : 0.1 # TODO make it fn (Coeff tensor order)
   tt_rank : 5
 

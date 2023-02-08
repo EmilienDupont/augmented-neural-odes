@@ -17,7 +17,7 @@ https://pytorch.org/tutorials/beginner/examples_autograd/two_layer_net_custom_fu
 class Forward2():
     @staticmethod
     def forward2(x: torch.Tensor, P: torch.Tensor, input_dimensions: Iterable[int],
-                 W: TensorTrainFixedRank, tensor_dtype: torch.dtype,
+                 W: [TensorTrainFixedRank|List[TensorTrain]], tensor_dtype: torch.dtype,
                  tt_ode_func: Callable, t_span: Tuple, basis_fn: str, basis_params: dict) -> Tuple[
         Tensor, Iterable[Tensor]]:
         z0_contract_dims = list(range(1, len(input_dimensions) + 1))
@@ -45,7 +45,6 @@ class TTOdeAls(torch.autograd.Function):
         ctx.z_trajectory = z_trajectory
         return zf
 
-    # @staticmethod
-    # def backward(ctx: Any, grad_outputs: Tensor) -> Any:
-    #     x=10
-    #     return None, None, None, None, None, None, None, None, None, None, None
+    @staticmethod
+    def backward(ctx: Any, grad_outputs: Tensor) -> Any:
+        return None, None, None, None, None, None, None, None, None, None, None

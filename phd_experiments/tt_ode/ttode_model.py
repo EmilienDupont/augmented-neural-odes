@@ -12,7 +12,7 @@ from phd_experiments.tt_ode.ttode_als import TTOdeAls, TensorTrainContainer, For
 from phd_experiments.torch_ode_solvers.torch_rk45 import TorchRK45
 
 
-class TerminalNeuralNetwork(torch.nn.Module):
+class Qnn(torch.nn.Module):
     NON_LINEARITIES = ["relu", "sigmoid", "softplus"]
 
     def __init__(self, input_dim, hidden_dim, out_dim):
@@ -155,27 +155,28 @@ class TensorTrainODEBLOCK(torch.nn.Module):
             self.P = torch.nn.Parameter(torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=P_dims),
                                         requires_grad=True)
             ####
-        self.terminal_nn = TerminalNeuralNetwork(input_dim=self.tensor_dimensions[0], out_dim=self.output_dimensions[0],
-                                                 hidden_dim=256)
+        self.Q = Qnn(input_dim=self.tensor_dimensions[0], out_dim=self.output_dimensions[0],
+                     hidden_dim=256)
 
         # Create solver
         assert t_span[0] < t_span[1], "t_span[0] must be < t_span[1]"
         if t_eval is not None:
             assert t_eval[0] >= t_span[0] and t_eval[1] <= t_span[1], "t_eval must be subset of t_span ranges"
-        self.monitor = {'W': [self.W], 'P': [self.P], 'F': [self.terminal_nn]}
+        self.monitor = {'W': [self.W], 'P': [self.P], 'F': [self.Q]}
 
     @staticmethod
-    def get_tt(ranks: List[int], basis_dim: int, requires_grad) -> TensorTrain:
+    def get_tt(ranks: List[int], basis_dim: int, requires_grad, dtype: torch.dtype) -> TensorTrain:
         """
         get dlra tt structure
         """
         order = len(ranks) + 1
-        core_list = TensorTrainODEBLOCK.generate_tt_cores(ranks=ranks, basis_dim=basis_dim, requires_grad=requires_grad)
+        core_list = TensorTrainODEBLOCK.generate_tt_cores(ranks=ranks, basis_dim=basis_dim, requires_grad=requires_grad,
+                                                          dtype=dtype)
         # FIXME assume fixed basis-dim for all orders
         return TensorTrain(dims=[basis_dim] * order, comp_list=core_list)
 
     @staticmethod
-    def generate_tt_cores(ranks: List[int], basis_dim: int, requires_grad) -> ParameterList:
+    def generate_tt_cores(ranks: List[int], basis_dim: int, requires_grad, dtype: torch.dtype) -> ParameterList:
         """List
 
         """
@@ -232,14 +233,16 @@ class TensorTrainODEBLOCK(torch.nn.Module):
         P_contract_dims = list(range(len(self.input_dimensions)))
         z0 = torch.tensordot(a=x, b=self.P, dims=(z0_contract_dims, P_contract_dims))
         if self.forward_impl_method == 'ttode_als':
-            if self.custom_autograd_fn:
-                tt_ode_alias = TTOdeAls.apply
-                zf = tt_ode_alias(x, self.P, self.input_dimensions, self.W, self.tt_container, self.tensor_dtype,
-                                  self.tt_ode_func, self.t_span
-                                  , self.basis_fn, self.basis_params)
-            else:
-                zf, _ = Forward2.forward2(x, self.P, self.input_dimensions, self.W, self.tensor_dtype, self.tt_ode_func,
-                                          self.t_span, self.basis_fn, self.basis_params)
+            zf, _ = Forward2.forward2(x, self.P, self.input_dimensions, self.W, self.tensor_dtype, self.tt_ode_func,
+                                      self.t_span, self.basis_fn, self.basis_params)
+            # if self.custom_autograd_fn:
+            #     tt_ode_alias = TTOdeAls.apply
+            #     zf = tt_ode_alias(x, self.P, self.input_dimensions, self.W, self.tt_container, self.tensor_dtype,
+            #                       self.tt_ode_func, self.t_span
+            #                       , self.basis_fn, self.basis_params)
+            # else:
+            #     zf, _ = Forward2.forward2(x, self.P, self.input_dimensions, self.W, self.tensor_dtype, self.tt_ode_func,
+            #                               self.t_span, self.basis_fn, self.basis_params)
             # FIXME debug code
             zf_requires_grad = zf.requires_grad
             x = 10
@@ -289,7 +292,7 @@ class TensorTrainODEBLOCK(torch.nn.Module):
         else:
             raise ValueError(f"forward_impl_method {self.forward_impl_method} not supported, "
                              f"must be one of {TensorTrainODEBLOCK.FORWARD_IMPL}")
-        y_hat = self.terminal_nn(zf)
+        y_hat = self.Q(zf)
         return y_hat
 
     def tt_ode_func(self, t: float, z: torch.Tensor, W: [List[TensorTrain] | TensorTrainFixedRank], basis_fn: str,
@@ -351,8 +354,8 @@ class TensorTrainODEBLOCK(torch.nn.Module):
     def get_nfe(self):
         return self.nfe
 
-    def get_terminal_nn(self):
-        return self.terminal_nn
+    def get_Q(self):
+        return self.Q
 
     def get_P(self):
         return self.P
