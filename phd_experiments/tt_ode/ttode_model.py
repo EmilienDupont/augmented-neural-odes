@@ -1,7 +1,7 @@
 from typing import List, Tuple, Callable, Union
 import numpy as np
 import torch
-from torch.nn import Parameter, ParameterList
+from torch.nn import Parameter, ParameterList, ModuleList
 from torchdiffeq import odeint
 from anode.models import ODEFunc
 from dlra.tt import TensorTrain
@@ -117,9 +117,13 @@ class TensorTrainODEBLOCK(torch.nn.Module):
         # F_dims.extend(output_dimensions.copy())
 
         # initialize model parameters
-        ulow, uhigh = 1e-7, 1e-5
-        self.P = torch.nn.Parameter(torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=P_dims))
 
+        # Initialize P
+        ulow, uhigh = 1e-7, 1e-5
+        self.P = torch.nn.Parameter(
+            torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=P_dims))
+
+        # Initialize W
         # self.W = torch.nn.Parameter(
         #     torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=W_dims))
         D_z = tensor_dimensions[0]  # assume tensor dimensions is for length 1 : i.e. project vector to vector
@@ -132,14 +136,21 @@ class TensorTrainODEBLOCK(torch.nn.Module):
             # FIXME TT structure assume poly basis fun
             # FIXME set back requires_grad = False when using TT-ALS for optimization, just testing how things work
             #   for grad_opt with tt_cores
-            self.W = [TensorTrainODEBLOCK.get_tt(ranks=[self.tt_rank] * int(D_z),
-                                                 basis_dim=int(self.basis_params['deg']) + 1,
-                                                 requires_grad=True)] * int(D_z)
-            # FIXME debug code , delete
-            for w in self.W:
-                for G in w.comps:
-                    is_leaf = G.is_leaf
-            # FIXME ENd debug code
+            # must use module list
+            # https://discuss.pytorch.org/t/model-named-parameters-will-lose-some-layer-modules/14588/2
+            # FIXME hacky way to register cores for Tensor-Trains into pytorch paramters
+            #   correct way it to register W as a ModuleList of TT or D-output TT , and let
+            #   Recursive name parameters mechanism retrive them, but didn't work
+            self.W = []
+            for d in range(D_z):
+                w = TensorTrainODEBLOCK.get_tt(ranks=[self.tt_rank] * int(D_z),
+                                               basis_dim=int(self.basis_params['deg']) + 1,
+                                               requires_grad=True, dtype=self.tensor_dtype)
+                self.W.append(w)
+                assert isinstance(self.W[-1], TensorTrain)
+                for i, G in enumerate(self.W[-1].comps):
+                    self.register_parameter(name=f'W{d}_G{i}', param=G)
+
             # the + 1 in int(self.basis_params['deg'])+1 is for deg_poly i.e x^0 , x^1 , .. x^deg
 
             # commented code below for self.W just for ref.
@@ -147,17 +158,14 @@ class TensorTrainODEBLOCK(torch.nn.Module):
             #                               fixed_rank=self.tt_rank, requires_grad=False)  # not optimizable by grad
             # TODO understand why should set required_grad for P to true to fire the backward call for TT_ALS.apply
             #   implementation for the auto_grad fn even if W has tt-cores with requires_param = 1
-            self.P = torch.nn.Parameter(torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=P_dims),
-                                        requires_grad=True)
+
         else:
             self.W = TensorTrainFixedRank(order=D_z + 1, core_input_dim=self.basis_params['deg'] + 1, out_dim=D_z,
                                           fixed_rank=self.tt_rank, requires_grad=True)  # optimizable by grad
-            self.P = torch.nn.Parameter(torch.distributions.Uniform(low=ulow, high=uhigh).sample(sample_shape=P_dims),
-                                        requires_grad=True)
+
             ####
         self.Q = Qnn(input_dim=self.tensor_dimensions[0], out_dim=self.output_dimensions[0],
                      hidden_dim=256)
-
         # Create solver
         assert t_span[0] < t_span[1], "t_span[0] must be < t_span[1]"
         if t_eval is not None:
@@ -233,20 +241,15 @@ class TensorTrainODEBLOCK(torch.nn.Module):
         P_contract_dims = list(range(len(self.input_dimensions)))
         z0 = torch.tensordot(a=x, b=self.P, dims=(z0_contract_dims, P_contract_dims))
         if self.forward_impl_method == 'ttode_als':
-            zf, _ = Forward2.forward2(x, self.P, self.input_dimensions, self.W, self.tensor_dtype, self.tt_ode_func,
-                                      self.t_span, self.basis_fn, self.basis_params)
-            # if self.custom_autograd_fn:
-            #     tt_ode_alias = TTOdeAls.apply
-            #     zf = tt_ode_alias(x, self.P, self.input_dimensions, self.W, self.tt_container, self.tensor_dtype,
-            #                       self.tt_ode_func, self.t_span
-            #                       , self.basis_fn, self.basis_params)
-            # else:
-            #     zf, _ = Forward2.forward2(x, self.P, self.input_dimensions, self.W, self.tensor_dtype, self.tt_ode_func,
-            #                               self.t_span, self.basis_fn, self.basis_params)
-            # FIXME debug code
-            zf_requires_grad = zf.requires_grad
-            x = 10
-            # END FIXME debug code
+
+            if self.custom_autograd_fn:
+                tt_ode_alias = TTOdeAls.apply
+                zf = tt_ode_alias(x, self.P, self.input_dimensions, self.W, self.tt_container, self.tensor_dtype,
+                                  self.tt_ode_func, self.t_span
+                                  , self.basis_fn, self.basis_params)
+            else:
+                zf, _ = Forward2.forward2(x, self.P, self.input_dimensions, self.W, self.tensor_dtype, self.tt_ode_func,
+                                          self.t_span, self.basis_fn, self.basis_params)
 
         elif self.forward_impl_method == 'gen_linear_const':
             """

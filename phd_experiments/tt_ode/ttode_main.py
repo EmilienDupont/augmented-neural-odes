@@ -128,14 +128,7 @@ if __name__ == '__main__':
     loss_fn = get_loss(loss_name=configs_['train']['loss'])
     target_flip = True
 
-    # FIXME hack to make sure all needed parameters are added to optimizer
-    opt_params = [model_.get_P()]
-    opt_params.extend(model_.get_Q().parameters())
-    W = model_.get_W()
-    if isinstance(W,list) and all([isinstance(w,TensorTrain) for w in W]):
-        for w in W:
-            opt_params.extend(w.parameters())
-    optimizer = Adam(opt_params, lr=float(configs_['train']['lr']))
+    optimizer = Adam(model_.parameters(), lr=float(configs_['train']['lr']))
     loss = torch.tensor([np.Inf])
     epochs_loss_history = []
     logger.info(f"""Starting training with n_epochs = {configs_['train']['n_epochs']},loss_threshold {
