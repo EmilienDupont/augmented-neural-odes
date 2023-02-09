@@ -154,31 +154,6 @@ if __name__ == '__main__':
             W_old_norm = get_W_norm(model_.get_W())
             Q_old_norm = model_.get_Q().norm().item()
 
-            # update via gradient descent for parameters with required_grad=True
-            # FIXME , hack to amplify W grads
-            if isinstance(model_.get_W(), list) and all([isinstance(w, TensorTrain) for w in model_.get_W()]):
-                for w in model_.get_W():
-                    for G in w.comps:
-                        G.grad *= 1
-            # FIXME End hack
-
-            # FIXME , remove quick hack to manual compute parameters update and see how that compares to optimize steps
-            # P_new_manual = model_.get_P()-float(configs_['train']['lr'])* model_.get_P().grad
-            # FIXME hack , manually update W components till we find why it is not updated
-            # W = model_.get_W()
-            # # https://medium.com/@mrityu.jha/understanding-the-grad-of-autograd-fc8d266fd6cf
-            # if isinstance(W, TensorTrainFixedRank):
-            #     pass
-            # elif isinstance(W, list) and all([isinstance(w, TensorTrain) for w in W]):
-            #     for i, w in enumerate(model_.get_W()):
-            #         for j, G in enumerate(w.comps):
-            #             is_leaf = G.is_leaf
-            #             model_.get_W()[i].comps[j] -= float(configs_['train']['lr']) * model_.get_W()[i].comps[j].grad
-
-            # TODO
-            #   1. Understand why optimizer step doesn't update W even when W Grads are good enough ??
-            #   2. Emulate optimize.step with wit
-
             optimizer.step()
 
             # calculate delta norm

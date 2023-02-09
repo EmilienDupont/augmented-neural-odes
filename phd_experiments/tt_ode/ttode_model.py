@@ -113,9 +113,6 @@ class TensorTrainODEBLOCK(torch.nn.Module):
         P_dims.extend(tensor_dimensions.copy())
         assert len(P_dims) == 2, "No support for the projection tensor P with n_dims > 2 , yet !"
 
-        # F_dims = tensor_dimensions.copy()
-        # F_dims.extend(output_dimensions.copy())
-
         # initialize model parameters
 
         # Initialize P

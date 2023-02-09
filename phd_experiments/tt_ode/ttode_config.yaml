@@ -32,7 +32,7 @@ train:
   print_freq: 10
   loss: "smoothl1loss"
   loss_window: 10
-  loss_threshold: 1e-4 # must be adjusted based on dataset
+  loss_threshold: 1e-3 # must be adjusted based on dataset
 
 # 6 ) Model-specific params
 resnet:
@@ -60,7 +60,7 @@ ttode: # tensor ode
   # TODO Understand : why when tf is large (e.g. 10) we get underflow
   # TODO more experiment with tf : seems crucial to accuracy and running time
   forward_impl_method: "ttode_als"
-  custom_autograd_fn : True
+  custom_autograd_fn : False
   lambda : 0.1 # TODO make it fn (Coeff tensor order)
   tt_rank : 5
 
