@@ -1,0 +1,17 @@
+# Local build file for doc pages
+docs/_build/
+
+# Local PyPI info
+torchmps.egg-info/
+pyproject.toml
+
+# Misc. local folders
+__pycache__/
+.hypothesis/
+sublime/
+
+# Misc. files
+.coverage
+
+# Local MNIST download
+mnist/

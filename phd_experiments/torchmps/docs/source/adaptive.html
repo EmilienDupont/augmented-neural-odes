@@ -1,0 +1,106 @@
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Adaptive Learning with SGD and DMRG &#8212; TorchMPS 0.1 documentation</title>
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/classic.css" type="text/css" />
+    
+    <script id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+    <script src="../_static/jquery.js"></script>
+    <script src="../_static/underscore.js"></script>
+    <script src="../_static/doctools.js"></script>
+    
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Similar Software" href="software.html" />
+    <link rel="prev" title="Functional MPS" href="functional.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="software.html" title="Similar Software"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="functional.html" title="Functional MPS"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">TorchMPS 0.1 documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Adaptive Learning with SGD and DMRG</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="adaptive-learning-with-sgd-and-dmrg">
+<h1>Adaptive Learning with SGD and DMRG<a class="headerlink" href="#adaptive-learning-with-sgd-and-dmrg" title="Permalink to this headline">¶</a></h1>
+<p>When an MPS is initialized with <cite>adaptive_mode</cite> set to <cite>True</cite>, training proceeds by alternating between different “offsets” of the MPS cores. Each offset combines adjacent pairs of cores into effective merged cores, so that half of the bonds in the MPS are contracted over. This contraction provides a low rank decomposition of the initial merged core, but as training progresses the rank across this bond will typically increase.</p>
+<p>After a certain number of inputs are fed to the MPS (equal to <cite>merge_threshold</cite>), each merged core is split in two via a singular value decomposition (SVD) across the contracted bond index. A truncation is then applied which removes all singular values less than <cite>cutoff</cite>, yielding a collection of split cores with half of the bonds having reduced bond dimension. These cores are then merged along a different offset and the process repeated, so that all of the bond dimensions are eventually optimized.</p>
+<p>Throughout this process, real-time lists of all the truncated bond dimensions and singular value spectra are accessible as the attributes <cite>my_mps.bond_list</cite> and <cite>my_mps.sv_list</cite>.</p>
+<p>This adaptive training mode was directly inspired by the ML DMRG training procedure in [Stoudenmire and Schwab 2016][S&amp;S], which uses a similar division of training into merging and splitting steps, but with a different overall control flow.</p>
+</div>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="functional.html"
+                        title="previous chapter">Functional MPS</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="software.html"
+                        title="next chapter">Similar Software</a></p>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/source/adaptive.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="software.html" title="Similar Software"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="functional.html" title="Functional MPS"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">TorchMPS 0.1 documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Adaptive Learning with SGD and DMRG</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2021, Jacob Miller.
+    </div>
+  </body>
+</html>

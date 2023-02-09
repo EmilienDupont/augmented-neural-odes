@@ -1,0 +1,66 @@
+# 1) Model selection - see sec 6
+model-name: 'ttode'
+# 2) torch configs
+torch:
+  device: "cpu"
+# 3) select a data-set. See sec 4
+dataset-name: 'concentric-sphere'
+# 4) datasets
+# each dataset must have input_dim,output_dim
+flip1d:
+  input_dim: 1
+  output_dim: 1
+  flip: True
+  n_train: 1000
+  n_test: 200
+
+concentric-sphere:
+  input_dim: 2
+  output_dim: 1
+  inner_range: 0.,0.5 # ranges must be tuple of floats
+  outer_range: 1.,1.5
+  n_inner_train: 400
+  n_outer_train: 400
+  n_inner_test: 100
+  n_outer_test: 100
+
+# 5 ) General train params
+train:
+  n_epochs: 500
+  lr: 1e-3
+  batch_size: 64
+  print_freq: 10
+  loss: "smoothl1loss"
+  loss_window: 10
+  loss_threshold: 1e-3 # must be adjusted based on dataset
+
+# 6 ) Model-specific params
+resnet:
+  hidden_dim: 32
+  num_layers: 20
+node: # neural ode
+  hidden_dim: 32
+  num_layers: 20
+anode: # augmented neural ode
+  hidden_dim: 32
+  num_layers: 20
+  augment_dim: 1
+ttode: # tensor ode
+  tensor_dims: { 1: [ 2 ],2: [ 3 ] ,4:[6],5:[7]}  # the tensor-dim for the projected latent variable
+  # input-dims -> tensor-dims
+  # as a start let's simplify things and make tensors_dim of the same order as the input
+  # i.e. if the input is vector (order-1 tensor ) then tensor-dim will be (order-1 tensor) with
+  # higher dimensions
+  # if input is a matrix (order-2 tensor) the tensor-dim will be for order-2 tensor also (matrix) but with higher
+  # dimensions
+  # if input is a 3D tensor (colored) image -> tensor dims will be for order-3 tensor with higher dimensions
+  non_linearity: None
+  basis: poly,3 # poly, dim or trig , a,b,c
+  t_span: [ 0,0.01 ] # FIXME : higher tf => higher depth => h(delta t) underflow problem
+  # TODO Understand : why when tf is large (e.g. 10) we get underflow
+  # TODO more experiment with tf : seems crucial to accuracy and running time
+  forward_impl_method: "ttode_als"
+  custom_autograd_fn : False
+  lambda : 0.1 # TODO make it fn (Coeff tensor order)
+  tt_rank : 5
+

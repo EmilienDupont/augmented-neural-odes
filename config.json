@@ -1,5 +1,5 @@
 {
-  "data_dim": 2,
+  "data_dim": 1,
   "num_reps": 10,
   "viz_batch_size": 512,
   "datasets": [{

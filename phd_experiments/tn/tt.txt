@@ -1,0 +1,10 @@
+Libraries
+=================
+1) TensorToolBox
+https://pypi.org/project/TensorToolbox/
+tried it but failed installation, need older version of python 3.6 or so
+https://thelinuxcluster.com/2020/09/30/encountering-error-when-pip-install-tensortoolbox/
+
+2) https://github.com/oseledets/ttpy
+
+3) https://tntorch.readthedocs.io/en/latest/

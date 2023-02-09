@@ -1,0 +1,114 @@
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Similar Software &#8212; TorchMPS 0.1 documentation</title>
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/classic.css" type="text/css" />
+    
+    <script id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+    <script src="../_static/jquery.js"></script>
+    <script src="../_static/underscore.js"></script>
+    <script src="../_static/doctools.js"></script>
+    
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Citing TorchMPS" href="citing.html" />
+    <link rel="prev" title="Adaptive Learning with SGD and DMRG" href="adaptive.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="citing.html" title="Citing TorchMPS"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="adaptive.html" title="Adaptive Learning with SGD and DMRG"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">TorchMPS 0.1 documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Similar Software</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="similar-software">
+<h1>Similar Software<a class="headerlink" href="#similar-software" title="Permalink to this headline">¶</a></h1>
+<p>There are plenty of excellent software packages for manipulating matrix product states/tensor trains, some notable ones including the following:</p>
+<ul class="simple">
+<li><p>[TensorNetwork](<a class="reference external" href="https://github.com/google/TensorNetwork">https://github.com/google/TensorNetwork</a>) (Python, TensorFlow): Powerful library for defining and manipulating general tensor network models, which is described in [Roberts et al. 2019][Rob].</p></li>
+<li><p>[T3F](<a class="reference external" href="https://github.com/Bihaqo/t3f">https://github.com/Bihaqo/t3f</a>) (Python, TensorFlow): Useful for general tensor train applications, T3F includes lots of support for working with tensor train factorizations of matrices (as used in [Novikov et al. 2015][Nov]), and supports Riemannian optimization techniques for improved training.</p></li>
+<li><p>[tntorch](<a class="reference external" href="https://github.com/rballester/tntorch">https://github.com/rballester/tntorch</a>) (Python, Pytorch): Implements many different tensor factorizations, including CP, Tucker, and tensor train.</p></li>
+<li><p>[TNML](<a class="reference external" href="https://github.com/emstoudenmire/TNML">https://github.com/emstoudenmire/TNML</a>) (C++, ITensor): Implements the DMRG-style training described in [Stoudenmire and Schwab 2016][S&amp;S], which had a major influence on our adaptive training algorithm.</p></li>
+</ul>
+<p>A defining quality of our library is the emphasis on using matrix product states as functional modules which can be easily interchanged with existing neural network components, while still allowing for interesting MPS-specific features.</p>
+<p>[Rob]: <a class="reference external" href="https://arxiv.org/abs/1905.01330">https://arxiv.org/abs/1905.01330</a>
+[S&amp;S]: <a class="reference external" href="https://arxiv.org/abs/1605.05775">https://arxiv.org/abs/1605.05775</a>
+[NTO]: <a class="reference external" href="https://arxiv.org/abs/1605.03795">https://arxiv.org/abs/1605.03795</a>
+[Nov]: <a class="reference external" href="https://arxiv.org/abs/1509.06569">https://arxiv.org/abs/1509.06569</a></p>
+</div>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="adaptive.html"
+                        title="previous chapter">Adaptive Learning with SGD and DMRG</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="citing.html"
+                        title="next chapter">Citing TorchMPS</a></p>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/source/software.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="citing.html" title="Citing TorchMPS"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="adaptive.html" title="Adaptive Learning with SGD and DMRG"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">TorchMPS 0.1 documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Similar Software</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2021, Jacob Miller.
+    </div>
+  </body>
+</html>

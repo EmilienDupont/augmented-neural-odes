@@ -1,0 +1,1492 @@
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>torchmps &#8212; TorchMPS 0.1 documentation</title>
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/classic.css" type="text/css" />
+    
+    <script id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+    <script src="../_static/jquery.js"></script>
+    <script src="../_static/underscore.js"></script>
+    <script src="../_static/doctools.js"></script>
+    
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="nav-item nav-item-0"><a href="../index.html">TorchMPS 0.1 documentation</a> &#187;</li>
+          <li class="nav-item nav-item-1"><a href="index.html" accesskey="U">Module code</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">torchmps</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for torchmps</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">TODO:</span>
+<span class="sd">    (1) Update master to include all the new features in dynamic_capacity</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">import</span> <span class="nn">math</span>
+
+<span class="kn">import</span> <span class="nn">torch</span>
+<span class="kn">import</span> <span class="nn">torch.nn</span> <span class="k">as</span> <span class="nn">nn</span>
+
+<span class="kn">from</span> <span class="nn">stensor</span> <span class="k">import</span> <span class="n">stensor</span>
+<span class="kn">from</span> <span class="nn">utils</span> <span class="k">import</span> <span class="n">init_tensor</span><span class="p">,</span> <span class="n">svd_flex</span>
+<span class="kn">from</span> <span class="nn">contractables</span> <span class="k">import</span> <span class="n">SingleMat</span><span class="p">,</span> <span class="n">MatRegion</span><span class="p">,</span> <span class="n">OutputCore</span><span class="p">,</span> <span class="n">ContractableList</span><span class="p">,</span> \
+                          <span class="n">EdgeVec</span><span class="p">,</span> <span class="n">OutputMat</span>
+
+<span class="k">class</span> <span class="nc">TI_MPS</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Sequence MPS which converts input of arbitrary length to a single output vector</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">output_dim</span><span class="p">,</span> <span class="n">bond_dim</span><span class="p">,</span> <span class="n">feature_dim</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> 
+                 <span class="n">parallel_eval</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">fixed_ends</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">init_std</span><span class="o">=</span><span class="mf">1e-9</span><span class="p">,</span> 
+                 <span class="n">use_bias</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">fixed_bias</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+
+        <span class="c1"># Initialize the core tensor defining our model near the identity</span>
+        <span class="c1"># This tensor holds all of the trainable parameters of our model</span>
+        <span class="n">tensor</span> <span class="o">=</span> <span class="n">init_tensor</span><span class="p">(</span><span class="n">bond_str</span><span class="o">=</span><span class="s1">&#39;lri&#39;</span><span class="p">,</span> 
+                             <span class="n">shape</span><span class="o">=</span><span class="p">[</span><span class="n">bond_dim</span><span class="p">,</span> <span class="n">bond_dim</span><span class="p">,</span> <span class="n">feature_dim</span><span class="p">],</span> 
+                             <span class="n">init_method</span><span class="o">=</span><span class="p">(</span><span class="s1">&#39;random_zero&#39;</span><span class="p">,</span> <span class="n">init_std</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">register_parameter</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;core_tensor&#39;</span><span class="p">,</span> <span class="n">param</span><span class="o">=</span><span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="n">tensor</span><span class="p">))</span>
+
+        <span class="c1"># Define our initial vector and terminal matrix, which are both </span>
+        <span class="c1"># functional modules, i.e. unchanged during training</span>
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">fixed_ends</span><span class="p">,</span> <span class="nb">bool</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">init_vector</span> <span class="o">=</span> <span class="n">InitialVector</span><span class="p">(</span><span class="n">bond_dim</span><span class="p">,</span> <span class="n">fixed_vec</span><span class="o">=</span><span class="n">fixed_ends</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">terminal_mat</span> <span class="o">=</span> <span class="n">TerminalOutput</span><span class="p">(</span><span class="n">bond_dim</span><span class="p">,</span> <span class="n">output_dim</span><span class="p">,</span> 
+                                           <span class="n">fixed_mat</span><span class="o">=</span><span class="n">fixed_ends</span><span class="p">)</span>
+
+        <span class="c1"># Set the bias matrix</span>
+        <span class="k">if</span> <span class="n">use_bias</span><span class="p">:</span>
+            <span class="c1"># bias_mat is identity when fixed_bias=True, near-identity otherwise</span>
+            <span class="k">if</span> <span class="n">fixed_bias</span><span class="p">:</span>
+                <span class="n">bias_mat</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">bond_dim</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">register_buffer</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;bias_mat&#39;</span><span class="p">,</span> <span class="n">tensor</span><span class="o">=</span><span class="n">bias_mat</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">bias_mat</span> <span class="o">=</span> <span class="n">init_tensor</span><span class="p">(</span><span class="n">bond_str</span><span class="o">=</span><span class="s1">&#39;lr&#39;</span><span class="p">,</span> <span class="n">shape</span><span class="o">=</span><span class="p">[</span><span class="n">bond_dim</span><span class="p">,</span> <span class="n">bond_dim</span><span class="p">],</span>
+                                       <span class="n">init_method</span><span class="o">=</span><span class="p">(</span><span class="s1">&#39;random_eye&#39;</span><span class="p">,</span> <span class="n">init_std</span><span class="p">))</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">register_parameter</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;bias_mat&#39;</span><span class="p">,</span> 
+                                        <span class="n">param</span><span class="o">=</span><span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="n">bias_mat</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">bias_mat</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="c1"># Set the rest of our TI_MPS attributes</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">feature_dim</span> <span class="o">=</span> <span class="n">feature_dim</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">output_dim</span> <span class="o">=</span> <span class="n">output_dim</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bond_dim</span> <span class="o">=</span> <span class="n">bond_dim</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">parallel_eval</span> <span class="o">=</span> <span class="n">parallel_eval</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">use_bias</span> <span class="o">=</span> <span class="n">use_bias</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fixed_bias</span> <span class="o">=</span> <span class="n">fixed_bias</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">feature_map</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_data</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Converts batch input tensor into a batch output tensor</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            input_data: A tensor of shape [batch_size, length, feature_dim].</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># Reformat our input to a batch format, padding with zeros as needed</span>
+        <span class="n">batch_input</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">format_input</span><span class="p">(</span><span class="n">input_data</span><span class="p">)</span>
+        <span class="n">batch_size</span> <span class="o">=</span> <span class="n">batch_input</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">seq_len</span> <span class="o">=</span> <span class="n">batch_input</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1"># Build up a contractable_list as EdgeVec + MatRegion + OutputMat</span>
+        <span class="n">expanded_core</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">core_tensor</span><span class="o">.</span><span class="n">expand</span><span class="p">([</span><span class="n">seq_len</span><span class="p">,</span> 
+                          <span class="bp">self</span><span class="o">.</span><span class="n">bond_dim</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">bond_dim</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">feature_dim</span><span class="p">])</span>
+        <span class="n">input_region</span> <span class="o">=</span> <span class="n">InputRegion</span><span class="p">(</span><span class="n">expanded_core</span><span class="p">,</span> <span class="n">use_bias</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">use_bias</span><span class="p">,</span> 
+                                   <span class="n">fixed_bias</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">fixed_bias</span><span class="p">,</span> 
+                                   <span class="n">bias_mat</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">bias_mat</span><span class="p">,</span> <span class="n">ephemeral</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">contractable_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">input_region</span><span class="p">(</span><span class="n">batch_input</span><span class="p">)]</span>
+
+        <span class="c1"># Prepend an EdgeVec and append an OutputMat</span>
+        <span class="n">contractable_list</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">init_vector</span><span class="p">()]</span> <span class="o">+</span> <span class="n">contractable_list</span>
+        <span class="n">contractable_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">terminal_mat</span><span class="p">())</span>
+
+        <span class="c1"># Wrap contractable_list as a ContractableList instance</span>
+        <span class="n">contractable_list</span> <span class="o">=</span> <span class="n">ContractableList</span><span class="p">(</span><span class="n">contractable_list</span><span class="p">)</span>
+
+        <span class="c1"># Contract everything in contractable_list</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="n">contractable_list</span><span class="o">.</span><span class="n">reduce</span><span class="p">(</span><span class="n">parallel_eval</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">parallel_eval</span><span class="p">)</span>
+        <span class="n">batch_output</span> <span class="o">=</span> <span class="n">output</span><span class="o">.</span><span class="n">tensor</span>
+
+        <span class="c1"># Check shape before returning output values</span>
+        <span class="k">assert</span> <span class="n">output</span><span class="o">.</span><span class="n">bond_str</span> <span class="o">==</span> <span class="s1">&#39;bo&#39;</span>
+        <span class="k">assert</span> <span class="n">batch_output</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="n">batch_size</span>
+        <span class="k">assert</span> <span class="n">batch_output</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_dim</span>
+
+        <span class="k">return</span> <span class="n">batch_output</span>
+
+    <span class="k">def</span> <span class="nf">format_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_data</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Converts input list of sequences into a single batch sequence tensor.</span>
+
+<span class="sd">        If input is already a batch tensor, it is returned unchanged. Otherwise,</span>
+<span class="sd">        convert input list into a batch sequence with shape [batch_size, length, </span>
+<span class="sd">        feature_dim].</span>
+
+<span class="sd">        If self.use_bias = self.fixed_bias = True, then sequences of different</span>
+<span class="sd">        lengths can be used, in which case shorter sequences are padded with </span>
+<span class="sd">        zeros at the end, making the batch tensor length equal to the length</span>
+<span class="sd">        of the longest input sequence.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            input_data: A tensor of shape [batch_size, length] or </span>
+<span class="sd">            [batch_size, length, feature_dim], or a list of length batch_size, </span>
+<span class="sd">            whose i&#39;th item is a tensor of shape [length_i, feature_dim] or </span>
+<span class="sd">            [length_i]. If self.use_bias or self.fixed_bias are False, then </span>
+<span class="sd">            length_i must be the same for all i. </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">feature_dim</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">feature_dim</span>
+
+        <span class="c1"># If we get a batch tensor, just embed it and/or return it unchanged</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">input_data</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">):</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">input_data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="n">input_data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">embed_input</span><span class="p">(</span><span class="n">input_data</span><span class="p">)</span>
+
+            <span class="c1"># Check to make sure shape is alright</span>
+            <span class="n">shape</span> <span class="o">=</span> <span class="n">input_data</span><span class="o">.</span><span class="n">shape</span>
+            <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">3</span>
+            <span class="k">assert</span> <span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">==</span> <span class="n">feature_dim</span>
+
+            <span class="k">return</span> <span class="n">input_data</span>
+
+        <span class="c1"># Collate the input list into a single batch tensor</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">input_data</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="c1"># Check formatting, require that input sequences are either all</span>
+            <span class="c1"># unembedded or all pre-embedded</span>
+            <span class="n">num_modes</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">input_data</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+            <span class="k">assert</span> <span class="n">num_modes</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+            <span class="k">assert</span> <span class="nb">all</span><span class="p">([</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span> <span class="ow">and</span> 
+                        <span class="nb">len</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="n">num_modes</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">input_data</span><span class="p">])</span>
+            <span class="k">assert</span> <span class="n">num_modes</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">or</span> <span class="nb">all</span><span class="p">([</span><span class="n">s</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="o">==</span> <span class="n">feature_dim</span> 
+                                          <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">input_data</span><span class="p">])</span>
+
+            <span class="c1"># Check that all the sequences are the same length or can be padded</span>
+            <span class="n">max_len</span> <span class="o">=</span> <span class="nb">max</span><span class="p">([</span><span class="n">s</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">input_data</span><span class="p">])</span>
+            <span class="n">can_pad</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_bias</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">fixed_bias</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">can_pad</span> <span class="ow">and</span> <span class="nb">any</span><span class="p">([</span><span class="n">s</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="o">!=</span> <span class="n">max_len</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">input_data</span><span class="p">]):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;To process input_data as list of sequences &quot;</span>
+                      <span class="s2">&quot;with different lengths, must have self.use_bias=&quot;</span>
+                      <span class="s2">&quot;self.fixed_bias=True (currently self.use_bias=&quot;</span>
+                     <span class="n">f</span><span class="s2">&quot;</span><span class="si">{self.use_bias}</span><span class="s2">, self.fixed_bias=</span><span class="si">{self.fixed_bias}</span><span class="s2">)&quot;</span><span class="p">)</span>
+
+            <span class="c1"># Pad the sequences with zeros (if needed), return as batch tensor</span>
+            <span class="k">if</span> <span class="n">can_pad</span><span class="p">:</span>
+                <span class="n">batch_size</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">input_data</span><span class="p">)</span>
+                <span class="n">full_size</span> <span class="o">=</span> <span class="p">[</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">max_len</span><span class="p">,</span> <span class="n">feature_dim</span><span class="p">]</span>
+                <span class="n">batch_input</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">full_size</span><span class="p">[:</span><span class="n">num_modes</span><span class="o">+</span><span class="mi">1</span><span class="p">])</span>
+                
+                <span class="c1"># Copy each sequence into batch_input</span>
+                <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">seq</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">input_data</span><span class="p">):</span>
+                    <span class="n">batch_input</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:</span><span class="n">seq</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">0</span><span class="p">)]</span> <span class="o">=</span> <span class="n">seq</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">batch_input</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">input_data</span><span class="p">)</span>
+
+            <span class="c1"># Embed everything (if needed) and return the batch tensor</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">batch_input</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="n">batch_input</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">embed_input</span><span class="p">(</span><span class="n">batch_input</span><span class="p">)</span>
+            
+            <span class="k">return</span> <span class="n">batch_input</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;input_data must either be Tensor with shape&quot;</span>
+                  <span class="s2">&quot;[batch_size, length] or [batch_size, length, feature_dim], &quot;</span>
+                  <span class="s2">&quot;or list of Tensors with shapes [length_i, feature_dim] or &quot;</span>
+                  <span class="s2">&quot;[length_i]&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">embed_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_data</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Embed pixels of input_data into separate local feature spaces</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            input_data (Tensor):    Input with shape [batch_size, length].</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            embedded_data (Tensor): Input embedded into a tensor with shape</span>
+<span class="sd">                                    [batch_size, input_dim, feature_dim]</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">input_data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span>
+
+        <span class="c1"># Get relevant dimensions</span>
+        <span class="n">batch_dim</span><span class="p">,</span> <span class="n">length</span> <span class="o">=</span> <span class="n">input_data</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">feature_dim</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">feature_dim</span>
+        <span class="n">embedded_shape</span> <span class="o">=</span> <span class="p">[</span><span class="n">batch_dim</span><span class="p">,</span> <span class="n">length</span><span class="p">,</span> <span class="n">feature_dim</span><span class="p">]</span>
+
+        <span class="c1"># Apply a custom embedding map if it has been defined by the user</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">feature_map</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">f_map</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">feature_map</span>
+            <span class="n">embedded_data</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">f_map</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">batch</span><span class="p">])</span>
+                                                      <span class="k">for</span> <span class="n">batch</span> <span class="ow">in</span> <span class="n">input_data</span><span class="p">])</span>
+
+            <span class="c1"># Make sure our embedded input has the desired size</span>
+            <span class="k">assert</span> <span class="nb">list</span><span class="p">(</span><span class="n">embedded_data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="n">embedded_shape</span>
+
+        <span class="c1"># Otherwise, use a simple linear embedding map with feature_dim = 2</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">feature_dim</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="n">f</span><span class="s2">&quot;self.feature_dim = </span><span class="si">{feature_dim}</span><span class="s2">, but &quot;</span>
+                      <span class="s2">&quot;default feature_map requires self.feature_dim = 2&quot;</span><span class="p">)</span>
+            <span class="n">embedded_data</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">embedded_shape</span><span class="p">)</span>
+
+            <span class="n">embedded_data</span><span class="p">[:,:,</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">input_data</span>
+            <span class="n">embedded_data</span><span class="p">[:,:,</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">input_data</span>
+
+        <span class="k">return</span> <span class="n">embedded_data</span>
+
+    <span class="k">def</span> <span class="nf">register_feature_map</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">feature_map</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Register a custom feature map to be used for embedding input data</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            feature_map (function): Takes a single scalar input datum and</span>
+<span class="sd">                                    returns an embedded representation of the</span>
+<span class="sd">                                    image. The output size of the function must</span>
+<span class="sd">                                    match self.feature_dim. If feature_map=None,</span>
+<span class="sd">                                    then the feature map will be reset to a</span>
+<span class="sd">                                    simple default linear embedding</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">feature_map</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Test to make sure feature_map outputs vector of proper size</span>
+            <span class="n">test_out</span> <span class="o">=</span> <span class="n">feature_map</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>
+            <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">test_out</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span>
+
+            <span class="n">out_shape</span><span class="p">,</span> <span class="n">needed_shape</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">test_out</span><span class="o">.</span><span class="n">shape</span><span class="p">),</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">feature_dim</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">out_shape</span> <span class="o">!=</span> <span class="n">needed_shape</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Given feature_map returns values with shape &quot;</span>
+                                <span class="n">f</span><span class="s2">&quot;{list(out_shape)}, but should return &quot;</span>
+                                <span class="n">f</span><span class="s2">&quot;values of size {list(needed_shape)}&quot;</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">feature_map</span> <span class="o">=</span> <span class="n">feature_map</span>
+
+
+<div class="viewcode-block" id="MPS"><a class="viewcode-back" href="../index.html#torchmps.MPS">[docs]</a><span class="k">class</span> <span class="nc">MPS</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Tunable MPS model giving mapping from fixed-size data to output vector</span>
+
+<span class="sd">    Model works by first converting each &#39;pixel&#39; (local data) to feature </span>
+<span class="sd">    vector via a simple embedding, then contracting embeddings with inputs </span>
+<span class="sd">    to each MPS cores. The resulting transition matrices are contracted </span>
+<span class="sd">    together along bond dimensions (i.e. hidden state spaces), with output</span>
+<span class="sd">    produced via an uncontracted edge of an additional output core.</span>
+
+<span class="sd">    MPS model permits many customizable behaviors, including custom </span>
+<span class="sd">    &#39;routing&#39; of MPS through the input, choice of boundary conditions </span>
+<span class="sd">    (meaning the model can act as a tensor train or a tensor ring), </span>
+<span class="sd">    GPU-friendly parallel evaluation, and an experimental mode to support</span>
+<span class="sd">    adaptive choice of bond dimensions based on singular value spectrum.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        input_dim:       Number of &#39;pixels&#39; in the input to the MPS</span>
+<span class="sd">        output_dim:      Size of the vectors output by MPS via output core</span>
+<span class="sd">        bond_dim:        Dimension of the &#39;bonds&#39; connecting adjacent MPS </span>
+<span class="sd">                         cores, which act as hidden state spaces of the </span>
+<span class="sd">                         model. In adaptive mode, bond_dim instead </span>
+<span class="sd">                         specifies the maximum allowed bond dimension</span>
+<span class="sd">        feature_dim:     Size of the local feature spaces each pixel is</span>
+<span class="sd">                         embedded into (default: 2)</span>
+<span class="sd">        periodic_bc:     Whether MPS has periodic boundary conditions (i.e. </span>
+<span class="sd">                         is a tensor ring) or open boundary conditions </span>
+<span class="sd">                         (i.e. is a tensor train) (default: False)</span>
+<span class="sd">        parallel_eval:   Whether contraction of tensors is performed in a </span>
+<span class="sd">                         serial or parallel fashion. The former is less </span>
+<span class="sd">                         expensive for open boundary conditions, but </span>
+<span class="sd">                         parallelizes more poorly (default: False)</span>
+<span class="sd">        label_site:      Location in the MPS chain where output is placed</span>
+<span class="sd">                         (default: input_dim // 2)</span>
+<span class="sd">        path:            List specifying a path through the input data</span>
+<span class="sd">                         which MPS is &#39;routed&#39; along. For example, choosing</span>
+<span class="sd">                         path=[0, 1, ..., input_dim-1] gives a standard </span>
+<span class="sd">                         in-order traversal (behavior when path=None), while </span>
+<span class="sd">                         path=[0, 2, ..., input_dim-1] specifies an MPS </span>
+<span class="sd">                         accepting input only from even-valued input pixels </span>
+<span class="sd">                         (default: None)</span>
+<span class="sd">        init_std:        Size of the Gaussian noise used in default </span>
+<span class="sd">                         near-identity initialization (default: 1e-9)</span>
+<span class="sd">        initializer:     Pytorch initializer for custom initialization of</span>
+<span class="sd">                         MPS cores, with None specifying default </span>
+<span class="sd">                         near-identity initialization (default: None)</span>
+<span class="sd">        use_bias:        Whether to use trainable bias matrices in MPS</span>
+<span class="sd">                         cores, which are initialized near the zero matrix</span>
+<span class="sd">                         (default: False)</span>
+<span class="sd">        adaptive_mode:   Whether MPS is trained with experimental adaptive</span>
+<span class="sd">                         bond dimensions selection (default: False)</span>
+<span class="sd">        cutoff:          Singular value cutoff controlling bond dimension</span>
+<span class="sd">                         adaptive selection (default: 1e-9)</span>
+<span class="sd">        merge_threshold: Number of inputs before adaptive MPS shifts its </span>
+<span class="sd">                         merge state once, with two shifts leading to the </span>
+<span class="sd">                         update of all bond dimensions (default: 2000)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    MPS TODOS</span>
+<span class="sd">        * Support arbitrary initializers</span>
+<span class="sd">        * Clean up the current treatment of initialization</span>
+<span class="sd">        * Resolve weirdness with fixed bias and initialization choice</span>
+<span class="sd">        * Add function to convert to canonical form</span>
+<span class="sd">        * Figure out why model isn&#39;t training currently</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_dim</span><span class="p">,</span> <span class="n">output_dim</span><span class="p">,</span> <span class="n">bond_dim</span><span class="p">,</span> <span class="n">feature_dim</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+                 <span class="n">periodic_bc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">parallel_eval</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">label_site</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> 
+                 <span class="n">path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">init_std</span><span class="o">=</span><span class="mf">1e-9</span><span class="p">,</span> <span class="n">initializer</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">use_bias</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> 
+                 <span class="n">adaptive_mode</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">cutoff</span><span class="o">=</span><span class="mf">1e-10</span><span class="p">,</span> <span class="n">merge_threshold</span><span class="o">=</span><span class="mi">2000</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">label_site</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">label_site</span> <span class="o">=</span> <span class="n">input_dim</span> <span class="o">//</span> <span class="mi">2</span>
+        <span class="k">assert</span> <span class="n">label_site</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">label_site</span> <span class="o">&lt;=</span> <span class="n">input_dim</span>
+
+        <span class="c1"># Using bias matrices in adaptive_mode is too complicated, so I&#39;m </span>
+        <span class="c1"># disabling it here</span>
+        <span class="k">if</span> <span class="n">adaptive_mode</span><span class="p">:</span>
+            <span class="n">use_bias</span> <span class="o">=</span> <span class="kc">False</span>
+
+        <span class="c1"># Our MPS is made of two InputRegions separated by an OutputSite.</span>
+        <span class="n">module_list</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">init_args</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;bond_str&#39;</span><span class="p">:</span> <span class="s1">&#39;slri&#39;</span><span class="p">,</span>
+                     <span class="s1">&#39;shape&#39;</span><span class="p">:</span> <span class="p">[</span><span class="n">label_site</span><span class="p">,</span> <span class="n">bond_dim</span><span class="p">,</span> <span class="n">bond_dim</span><span class="p">,</span> <span class="n">feature_dim</span><span class="p">],</span>
+                     <span class="s1">&#39;init_method&#39;</span><span class="p">:</span> <span class="p">(</span><span class="s1">&#39;min_random_eye&#39;</span> <span class="k">if</span> <span class="n">adaptive_mode</span> <span class="k">else</span>
+                     <span class="s1">&#39;random_zero&#39;</span><span class="p">,</span> <span class="n">init_std</span><span class="p">,</span> <span class="n">output_dim</span><span class="p">)}</span>
+
+        <span class="c1"># The first input region</span>
+        <span class="k">if</span> <span class="n">label_site</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">tensor</span> <span class="o">=</span> <span class="n">init_tensor</span><span class="p">(</span><span class="o">**</span><span class="n">init_args</span><span class="p">)</span>
+
+            <span class="n">module_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">InputRegion</span><span class="p">(</span><span class="n">tensor</span><span class="p">,</span> <span class="n">use_bias</span><span class="o">=</span><span class="n">use_bias</span><span class="p">,</span> 
+                                           <span class="n">fixed_bias</span><span class="o">=</span><span class="kc">False</span><span class="p">))</span>
+
+        <span class="c1"># The output site</span>
+        <span class="n">tensor</span> <span class="o">=</span> <span class="n">init_tensor</span><span class="p">(</span><span class="n">shape</span><span class="o">=</span><span class="p">[</span><span class="n">output_dim</span><span class="p">,</span> <span class="n">bond_dim</span><span class="p">,</span> <span class="n">bond_dim</span><span class="p">],</span>
+            <span class="n">bond_str</span><span class="o">=</span><span class="s1">&#39;olr&#39;</span><span class="p">,</span> <span class="n">init_method</span><span class="o">=</span><span class="p">(</span><span class="s1">&#39;min_random_eye&#39;</span> <span class="k">if</span> <span class="n">adaptive_mode</span> <span class="k">else</span>
+                                         <span class="s1">&#39;random_eye&#39;</span><span class="p">,</span> <span class="n">init_std</span><span class="p">,</span> <span class="n">output_dim</span><span class="p">))</span>
+        <span class="n">module_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">OutputSite</span><span class="p">(</span><span class="n">tensor</span><span class="p">))</span>
+
+        <span class="c1"># The other input region</span>
+        <span class="k">if</span> <span class="n">label_site</span> <span class="o">&lt;</span> <span class="n">input_dim</span><span class="p">:</span>
+            <span class="n">init_args</span><span class="p">[</span><span class="s1">&#39;shape&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">input_dim</span><span class="o">-</span><span class="n">label_site</span><span class="p">,</span> <span class="n">bond_dim</span><span class="p">,</span> <span class="n">bond_dim</span><span class="p">,</span> 
+                                  <span class="n">feature_dim</span><span class="p">]</span>
+            <span class="n">tensor</span> <span class="o">=</span> <span class="n">init_tensor</span><span class="p">(</span><span class="o">**</span><span class="n">init_args</span><span class="p">)</span>
+            <span class="n">module_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">InputRegion</span><span class="p">(</span><span class="n">tensor</span><span class="p">,</span> <span class="n">use_bias</span><span class="o">=</span><span class="n">use_bias</span><span class="p">,</span> 
+                                           <span class="n">fixed_bias</span><span class="o">=</span><span class="kc">False</span><span class="p">))</span>
+
+        <span class="c1"># Initialize linear_region according to our adaptive_mode specification</span>
+        <span class="k">if</span> <span class="n">adaptive_mode</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">linear_region</span> <span class="o">=</span> <span class="n">MergedLinearRegion</span><span class="p">(</span><span class="n">module_list</span><span class="o">=</span><span class="n">module_list</span><span class="p">,</span>
+                                 <span class="n">periodic_bc</span><span class="o">=</span><span class="n">periodic_bc</span><span class="p">,</span>
+                                 <span class="n">parallel_eval</span><span class="o">=</span><span class="n">parallel_eval</span><span class="p">,</span> <span class="n">cutoff</span><span class="o">=</span><span class="n">cutoff</span><span class="p">,</span>
+                                 <span class="n">merge_threshold</span><span class="o">=</span><span class="n">merge_threshold</span><span class="p">)</span>
+
+            <span class="c1"># Initialize the list of bond dimensions, which starts out constant</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">bond_list</span> <span class="o">=</span> <span class="n">bond_dim</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">input_dim</span> <span class="o">+</span> <span class="mi">2</span><span class="p">,</span> 
+                                                   <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">long</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">periodic_bc</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">bond_list</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">bond_list</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span>
+
+            <span class="c1"># Initialize the list of singular values, which start out at -1</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sv_list</span> <span class="o">=</span> <span class="o">-</span><span class="mf">1.</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">([</span><span class="n">input_dim</span> <span class="o">+</span> <span class="mi">2</span><span class="p">,</span> <span class="n">bond_dim</span><span class="p">])</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">linear_region</span> <span class="o">=</span> <span class="n">LinearRegion</span><span class="p">(</span><span class="n">module_list</span><span class="o">=</span><span class="n">module_list</span><span class="p">,</span>
+                                 <span class="n">periodic_bc</span><span class="o">=</span><span class="n">periodic_bc</span><span class="p">,</span>
+                                 <span class="n">parallel_eval</span><span class="o">=</span><span class="n">parallel_eval</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">linear_region</span><span class="p">)</span> <span class="o">==</span> <span class="n">input_dim</span>
+
+        <span class="k">if</span> <span class="n">path</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">))</span>
+            <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">path</span><span class="p">)</span> <span class="o">==</span> <span class="n">input_dim</span>
+
+        <span class="c1"># Set the rest of our MPS attributes</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">input_dim</span> <span class="o">=</span> <span class="n">input_dim</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">output_dim</span> <span class="o">=</span> <span class="n">output_dim</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bond_dim</span> <span class="o">=</span> <span class="n">bond_dim</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">feature_dim</span> <span class="o">=</span> <span class="n">feature_dim</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">periodic_bc</span> <span class="o">=</span> <span class="n">periodic_bc</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">adaptive_mode</span> <span class="o">=</span> <span class="n">adaptive_mode</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">label_site</span> <span class="o">=</span> <span class="n">label_site</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">path</span> <span class="o">=</span> <span class="n">path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">use_bias</span> <span class="o">=</span> <span class="n">use_bias</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cutoff</span> <span class="o">=</span> <span class="n">cutoff</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">merge_threshold</span> <span class="o">=</span> <span class="n">merge_threshold</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">feature_map</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_data</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Embed our data and pass it to an MPS with a single output site</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            input_data (Tensor): Input with shape [batch_size, input_dim] or</span>
+<span class="sd">                                 [batch_size, input_dim, feature_dim]. In the</span>
+<span class="sd">                                 former case, the data points are turned into</span>
+<span class="sd">                                 2D vectors using a default linear feature map.</span>
+<span class="sd">                                 </span>
+<span class="sd">                                 When using a user-specified path, the size of</span>
+<span class="sd">                                 the second tensor mode need not exactly equal</span>
+<span class="sd">                                 input_dim, since the path variable is used to</span>
+<span class="sd">                                 slice a certain subregion of input_data. This</span>
+<span class="sd">                                 can be used to define multiple MPS &#39;strings&#39;, </span>
+<span class="sd">                                 which act on different parts of the input. </span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># For custom paths, rearrange our input into the desired order</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">path</span><span class="p">:</span>
+            <span class="n">path_inputs</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">site_num</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">path</span><span class="p">:</span>
+                <span class="n">path_inputs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">input_data</span><span class="p">[:,</span> <span class="n">site_num</span><span class="p">])</span>
+            <span class="n">input_data</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">path_inputs</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1"># Embed our input data before feeding it into our linear region</span>
+        <span class="n">input_data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">embed_input</span><span class="p">(</span><span class="n">input_data</span><span class="p">)</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">linear_region</span><span class="p">(</span><span class="n">input_data</span><span class="p">)</span>
+
+        <span class="c1"># If we got a tuple as output, then use the last two entries to</span>
+        <span class="c1"># update our bond dimensions and singular values</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">output</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+            <span class="n">output</span><span class="p">,</span> <span class="n">new_bonds</span><span class="p">,</span> <span class="n">new_svs</span> <span class="o">=</span> <span class="n">output</span>
+
+            <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">new_bonds</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">bond_list</span><span class="p">)</span>
+            <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">new_bonds</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">new_svs</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">bond_dim</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">new_bonds</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">bond_dim</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+                    <span class="k">assert</span> <span class="n">new_svs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="o">-</span><span class="mi">1</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">bond_list</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">bond_dim</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">sv_list</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_svs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+
+        <span class="k">return</span> <span class="n">output</span>
+
+    <span class="k">def</span> <span class="nf">embed_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_data</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Embed pixels of input_data into separate local feature spaces</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            input_data (Tensor):    Input with shape [batch_size, input_dim], or</span>
+<span class="sd">                                    [batch_size, input_dim, feature_dim]. In the</span>
+<span class="sd">                                    latter case, the data is assumed to already</span>
+<span class="sd">                                    be embedded, and is returned unchanged.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            embedded_data (Tensor): Input embedded into a tensor with shape</span>
+<span class="sd">                                    [batch_size, input_dim, feature_dim]</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">input_data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">]</span>
+        <span class="k">assert</span> <span class="n">input_data</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">input_dim</span>
+
+        <span class="c1"># If input already has a feature dimension, return it as is</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">input_data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">input_data</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span> <span class="o">!=</span> <span class="bp">self</span><span class="o">.</span><span class="n">feature_dim</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">f</span><span class="s2">&quot;input_data has wrong shape to be unembedded &quot;</span>
+                <span class="s2">&quot;or pre-embedded data (input_data.shape = &quot;</span>
+                <span class="n">f</span><span class="s2">&quot;{list(input_data.shape)}, feature_dim = </span><span class="si">{self.feature_dim}</span><span class="s2">)&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">input_data</span>
+
+        <span class="n">embedded_shape</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">input_data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">+</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">feature_dim</span><span class="p">]</span>
+
+        <span class="c1"># Apply a custom embedding map if it has been defined by the user</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">feature_map</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">f_map</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">feature_map</span>
+            <span class="n">embedded_data</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">f_map</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">batch</span><span class="p">])</span>
+                                                      <span class="k">for</span> <span class="n">batch</span> <span class="ow">in</span> <span class="n">input_data</span><span class="p">])</span>
+
+            <span class="c1"># Make sure our embedded input has the desired size</span>
+            <span class="k">assert</span> <span class="n">embedded_data</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> <span class="n">torch</span><span class="o">.</span><span class="n">Size</span><span class="p">(</span>
+                   <span class="p">[</span><span class="n">input_data</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="bp">self</span><span class="o">.</span><span class="n">input_dim</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">feature_dim</span><span class="p">])</span>
+
+        <span class="c1"># Otherwise, use a simple linear embedding map with feature_dim = 2</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">feature_dim</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="n">f</span><span class="s2">&quot;self.feature_dim = </span><span class="si">{self.feature_dim}</span><span class="s2">, &quot;</span>
+                      <span class="s2">&quot;but default feature_map requires self.feature_dim = 2&quot;</span><span class="p">)</span>
+
+            <span class="n">embedded_data</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">input_data</span><span class="p">,</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">input_data</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">embedded_data</span>
+
+    <span class="k">def</span> <span class="nf">register_feature_map</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">feature_map</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Register a custom feature map to be used for embedding input data</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            feature_map (function): Takes a single scalar input datum and</span>
+<span class="sd">                                    returns an embedded representation of the</span>
+<span class="sd">                                    image. The output size of the function must</span>
+<span class="sd">                                    match self.feature_dim. If feature_map=None,</span>
+<span class="sd">                                    then the feature map will be reset to a</span>
+<span class="sd">                                    simple default linear embedding</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">feature_map</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Test to make sure feature_map outputs vector of proper size</span>
+            <span class="n">out_shape</span> <span class="o">=</span> <span class="n">feature_map</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span><span class="o">.</span><span class="n">shape</span>
+            <span class="n">needed_shape</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">Size</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">feature_dim</span><span class="p">])</span>
+            <span class="k">if</span> <span class="n">out_shape</span> <span class="o">!=</span> <span class="n">needed_shape</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Given feature_map returns values of size &quot;</span>
+                                <span class="n">f</span><span class="s2">&quot;{list(out_shape)}, but should return &quot;</span>
+                                <span class="n">f</span><span class="s2">&quot;values of size {list(needed_shape)}&quot;</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">feature_map</span> <span class="o">=</span> <span class="n">feature_map</span>
+
+    <span class="k">def</span> <span class="nf">core_len</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the number of cores, which is at least the required input size</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">linear_region</span><span class="o">.</span><span class="n">core_len</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the number of input sites, which equals the input size</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">input_dim</span></div>
+
+
+<span class="k">class</span> <span class="nc">LinearRegion</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    List of modules which feeds input to each module and returns reduced output</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">module_list</span><span class="p">,</span> <span class="n">periodic_bc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">parallel_eval</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                 <span class="n">module_states</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="c1"># Check that module_list is a list whose entries are Pytorch modules</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">module_list</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="ow">or</span> <span class="n">module_list</span> <span class="ow">is</span> <span class="p">[]:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Input to LinearRegion must be nonempty list&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">item</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">module_list</span><span class="p">):</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Input items to LinearRegion must be PyTorch &quot;</span>
+                                <span class="n">f</span><span class="s2">&quot;Module instances, but item </span><span class="si">{i}</span><span class="s2"> is not&quot;</span><span class="p">)</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+
+        <span class="c1"># Wrap as a ModuleList for proper parameter registration</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">module_list</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">ModuleList</span><span class="p">(</span><span class="n">module_list</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">periodic_bc</span> <span class="o">=</span> <span class="n">periodic_bc</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">parallel_eval</span> <span class="o">=</span> <span class="n">parallel_eval</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_data</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Contract input with list of MPS cores and return result as contractable</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            input_data (Tensor): Input with shape [batch_size, input_dim,</span>
+<span class="sd">                                                   feature_dim]</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Check that input_data has the correct shape</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">input_data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">3</span>
+        <span class="k">assert</span> <span class="n">input_data</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="n">periodic_bc</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">periodic_bc</span>
+        <span class="n">parallel_eval</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parallel_eval</span>
+        <span class="n">lin_bonds</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;l&#39;</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">]</span>
+
+        <span class="c1"># Whether to move intermediate vectors to a GPU (fixes Issue #8)</span>
+        <span class="n">to_cuda</span> <span class="o">=</span> <span class="n">input_data</span><span class="o">.</span><span class="n">is_cuda</span>
+        <span class="n">device</span> <span class="o">=</span> <span class="n">f</span><span class="s1">&#39;cuda:{input_data.get_device()}&#39;</span> <span class="k">if</span> <span class="n">to_cuda</span> <span class="k">else</span> <span class="s1">&#39;cpu&#39;</span>
+
+        <span class="c1"># For each module, pull out the number of pixels needed and call that</span>
+        <span class="c1"># module&#39;s forward() method, putting the result in contractable_list</span>
+        <span class="n">ind</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">contractable_list</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">module</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">module_list</span><span class="p">:</span>
+            <span class="n">mod_len</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">module</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">mod_len</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">mod_input</span> <span class="o">=</span> <span class="n">input_data</span><span class="p">[:,</span> <span class="n">ind</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">mod_input</span> <span class="o">=</span> <span class="n">input_data</span><span class="p">[:,</span> <span class="n">ind</span><span class="p">:(</span><span class="n">ind</span><span class="o">+</span><span class="n">mod_len</span><span class="p">)]</span>
+            <span class="n">ind</span> <span class="o">+=</span> <span class="n">mod_len</span>
+
+            <span class="n">contractable_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">module</span><span class="p">(</span><span class="n">mod_input</span><span class="p">))</span>
+
+        <span class="c1"># For periodic boundary conditions, reduce contractable_list and</span>
+        <span class="c1"># trace over the left and right indices to get our output</span>
+        <span class="k">if</span> <span class="n">periodic_bc</span><span class="p">:</span>
+            <span class="n">contractable_list</span> <span class="o">=</span> <span class="n">ContractableList</span><span class="p">(</span><span class="n">contractable_list</span><span class="p">)</span>
+            <span class="n">contractable</span> <span class="o">=</span> <span class="n">contractable_list</span><span class="o">.</span><span class="n">reduce</span><span class="p">(</span><span class="n">parallel_eval</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+            <span class="c1"># Unpack the output (atomic) contractable</span>
+            <span class="n">tensor</span><span class="p">,</span> <span class="n">bond_str</span> <span class="o">=</span> <span class="n">contractable</span><span class="o">.</span><span class="n">tensor</span><span class="p">,</span> <span class="n">contractable</span><span class="o">.</span><span class="n">bond_str</span>
+            <span class="k">assert</span> <span class="nb">all</span><span class="p">(</span><span class="n">c</span> <span class="ow">in</span> <span class="n">bond_str</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">lin_bonds</span><span class="p">)</span>
+
+            <span class="c1"># Build einsum string for the trace of tensor</span>
+            <span class="n">in_str</span><span class="p">,</span> <span class="n">out_str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span>
+            <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">bond_str</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">lin_bonds</span><span class="p">:</span>
+                    <span class="n">in_str</span> <span class="o">+=</span> <span class="s1">&#39;l&#39;</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">in_str</span> <span class="o">+=</span> <span class="n">c</span>
+                    <span class="n">out_str</span> <span class="o">+=</span> <span class="n">c</span>
+            <span class="n">ein_str</span> <span class="o">=</span> <span class="n">in_str</span> <span class="o">+</span> <span class="s2">&quot;-&gt;&quot;</span> <span class="o">+</span> <span class="n">out_str</span>
+
+            <span class="c1"># Return the trace over left and right indices</span>
+            <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">einsum</span><span class="p">(</span><span class="n">ein_str</span><span class="p">,</span> <span class="p">[</span><span class="n">tensor</span><span class="p">])</span>
+
+        <span class="c1"># For open boundary conditions, add dummy edge vectors to</span>
+        <span class="c1"># contractable_list and reduce everything to get our output</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Get the dimension of left and right bond indices</span>
+            <span class="n">end_items</span> <span class="o">=</span> <span class="p">[</span><span class="n">contractable_list</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">]]</span>
+            <span class="n">bond_strs</span> <span class="o">=</span> <span class="p">[</span><span class="n">item</span><span class="o">.</span><span class="n">bond_str</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">end_items</span><span class="p">]</span>
+            <span class="n">bond_inds</span> <span class="o">=</span> <span class="p">[</span><span class="n">bs</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">c</span><span class="p">)</span> <span class="k">for</span> <span class="p">(</span><span class="n">bs</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">bond_strs</span><span class="p">,</span> <span class="n">lin_bonds</span><span class="p">)]</span>
+            <span class="n">bond_dims</span> <span class="o">=</span> <span class="p">[</span><span class="n">item</span><span class="o">.</span><span class="n">tensor</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="n">ind</span><span class="p">)</span> <span class="k">for</span> <span class="p">(</span><span class="n">item</span><span class="p">,</span> <span class="n">ind</span><span class="p">)</span> <span class="ow">in</span>
+                                               <span class="nb">zip</span><span class="p">(</span><span class="n">end_items</span><span class="p">,</span> <span class="n">bond_inds</span><span class="p">)]</span>
+
+            <span class="c1"># Build dummy end vectors and insert them at the ends of our list</span>
+            <span class="n">end_vecs</span> <span class="o">=</span> <span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span> <span class="k">for</span> <span class="n">dim</span> <span class="ow">in</span> <span class="n">bond_dims</span><span class="p">]</span>
+
+            <span class="k">for</span> <span class="n">vec</span> <span class="ow">in</span> <span class="n">end_vecs</span><span class="p">:</span>
+                <span class="n">vec</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+            <span class="n">contractable_list</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">EdgeVec</span><span class="p">(</span><span class="n">end_vecs</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">is_left_vec</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+            <span class="n">contractable_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">EdgeVec</span><span class="p">(</span><span class="n">end_vecs</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">is_left_vec</span><span class="o">=</span><span class="kc">False</span><span class="p">))</span>
+
+            <span class="c1"># Multiply together everything in contractable_list</span>
+            <span class="n">contractable_list</span> <span class="o">=</span> <span class="n">ContractableList</span><span class="p">(</span><span class="n">contractable_list</span><span class="p">)</span>
+            <span class="n">output</span> <span class="o">=</span> <span class="n">contractable_list</span><span class="o">.</span><span class="n">reduce</span><span class="p">(</span><span class="n">parallel_eval</span><span class="o">=</span><span class="n">parallel_eval</span><span class="p">)</span>
+
+            <span class="k">return</span> <span class="n">output</span><span class="o">.</span><span class="n">tensor</span>
+
+    <span class="k">def</span> <span class="nf">core_len</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the number of cores, which is at least the required input size</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">sum</span><span class="p">([</span><span class="n">module</span><span class="o">.</span><span class="n">core_len</span><span class="p">()</span> <span class="k">for</span> <span class="n">module</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">module_list</span><span class="p">])</span>
+
+    <span class="k">def</span> <span class="nf">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the number of input sites, which is the required input size</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">sum</span><span class="p">([</span><span class="nb">len</span><span class="p">(</span><span class="n">module</span><span class="p">)</span> <span class="k">for</span> <span class="n">module</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">module_list</span><span class="p">])</span>
+
+<span class="k">class</span> <span class="nc">MergedLinearRegion</span><span class="p">(</span><span class="n">LinearRegion</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Dynamic variant of LinearRegion that periodically rearranges its submodules</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">module_list</span><span class="p">,</span> <span class="n">periodic_bc</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">parallel_eval</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                 <span class="n">cutoff</span><span class="o">=</span><span class="mf">1e-10</span><span class="p">,</span> <span class="n">merge_threshold</span><span class="o">=</span><span class="mi">2000</span><span class="p">):</span>
+        <span class="c1"># Initialize a LinearRegion with our given module_list</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">module_list</span><span class="p">,</span> <span class="n">periodic_bc</span><span class="p">,</span> <span class="n">parallel_eval</span><span class="p">)</span>
+
+        <span class="c1"># Initialize attributes self.module_list_0 and self.module_list_1</span>
+        <span class="c1"># using the unmerged self.module_list, then redefine the latter in</span>
+        <span class="c1"># terms of one of the former lists</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">offset</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_merge</span><span class="p">(</span><span class="n">offset</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">offset</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_merge</span><span class="p">(</span><span class="n">offset</span><span class="o">=</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">offset</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span><span class="o">%</span><span class="mi">2</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">module_list</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">f</span><span class="s2">&quot;module_list_</span><span class="si">{self.offset}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Initialize variables used during switching</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">input_counter</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">merge_threshold</span> <span class="o">=</span> <span class="n">merge_threshold</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cutoff</span> <span class="o">=</span> <span class="n">cutoff</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_data</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Contract input with list of MPS cores and return result as contractable</span>
+
+<span class="sd">        MergedLinearRegion keeps an input counter of the number of inputs, and</span>
+<span class="sd">        when this exceeds its merge threshold, triggers an unmerging and</span>
+<span class="sd">        remerging of its parameter tensors.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            input_data (Tensor): Input with shape [batch_size, input_dim,</span>
+<span class="sd">                                                   feature_dim]</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># If we&#39;ve hit our threshold, flip the merge state of our tensors</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">input_counter</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">merge_threshold</span><span class="p">:</span>
+            <span class="n">bond_list</span><span class="p">,</span> <span class="n">sv_list</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unmerge</span><span class="p">(</span><span class="n">cutoff</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">cutoff</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">offset</span> <span class="o">=</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">offset</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">%</span> <span class="mi">2</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_merge</span><span class="p">(</span><span class="n">offset</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">offset</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">input_counter</span> <span class="o">-=</span> <span class="bp">self</span><span class="o">.</span><span class="n">merge_threshold</span>
+
+            <span class="c1"># Point self.module_list to the appropriate merged module</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">module_list</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">f</span><span class="s2">&quot;module_list_</span><span class="si">{self.offset}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">bond_list</span><span class="p">,</span> <span class="n">sv_list</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span>
+
+        <span class="c1"># Increment our counter and call the LinearRegion&#39;s forward method</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">input_counter</span> <span class="o">+=</span> <span class="n">input_data</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">input_data</span><span class="p">)</span>
+
+        <span class="c1"># If we flipped our merge state, then return the bond_list and output</span>
+        <span class="k">if</span> <span class="n">bond_list</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">output</span><span class="p">,</span> <span class="n">bond_list</span><span class="p">,</span> <span class="n">sv_list</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">output</span>
+
+    <span class="nd">@torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">()</span>
+    <span class="k">def</span> <span class="nf">_merge</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">offset</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Convert unmerged modules in self.module_list to merged counterparts</span>
+
+<span class="sd">        Calling _merge (or _unmerge) directly can cause undefined behavior, </span>
+<span class="sd">        but see MergedLinearRegion.forward for intended use</span>
+
+<span class="sd">        This proceeds by first merging all unmerged cores internally, then</span>
+<span class="sd">        merging lone cores when possible during a second sweep</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">assert</span> <span class="n">offset</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+
+        <span class="n">unmerged_list</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">module_list</span>
+
+        <span class="c1"># Merge each core internally and add the results to midway_list</span>
+        <span class="n">site_num</span> <span class="o">=</span> <span class="n">offset</span>
+        <span class="n">merged_list</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">core</span> <span class="ow">in</span> <span class="n">unmerged_list</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">core</span><span class="p">,</span> <span class="n">MergedInput</span><span class="p">)</span>
+            <span class="k">assert</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">core</span><span class="p">,</span> <span class="n">MergedOutput</span><span class="p">)</span>
+
+            <span class="c1"># Apply internal merging routine if our core supports it</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">core</span><span class="p">,</span> <span class="s1">&#39;_merge&#39;</span><span class="p">):</span>
+                <span class="n">merged_list</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">core</span><span class="o">.</span><span class="n">_merge</span><span class="p">(</span><span class="n">offset</span><span class="o">=</span><span class="n">site_num</span><span class="o">%</span><span class="mi">2</span><span class="p">))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">merged_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">core</span><span class="p">)</span>
+
+            <span class="n">site_num</span> <span class="o">+=</span> <span class="n">core</span><span class="o">.</span><span class="n">core_len</span><span class="p">()</span>
+
+        <span class="c1"># Merge pairs of cores when possible (currently only with</span>
+        <span class="c1"># InputSites), making sure to respect the offset for merging.</span>
+        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="n">mod_num</span><span class="p">,</span> <span class="n">site_num</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span>
+            <span class="n">combined_list</span> <span class="o">=</span> <span class="p">[]</span>
+
+            <span class="k">while</span> <span class="n">mod_num</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">merged_list</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">left_core</span><span class="p">,</span> <span class="n">right_core</span> <span class="o">=</span> <span class="n">merged_list</span><span class="p">[</span><span class="n">mod_num</span><span class="p">:</span> <span class="n">mod_num</span><span class="o">+</span><span class="mi">2</span><span class="p">]</span>
+                <span class="n">new_core</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">combine</span><span class="p">(</span><span class="n">left_core</span><span class="p">,</span> <span class="n">right_core</span><span class="p">,</span>
+                                                   <span class="n">merging</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+                <span class="c1"># If cores aren&#39;t combinable, move our sliding window by 1</span>
+                <span class="k">if</span> <span class="n">new_core</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">offset</span> <span class="o">!=</span> <span class="n">site_num</span> <span class="o">%</span> <span class="mi">2</span><span class="p">:</span>
+                    <span class="n">combined_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">left_core</span><span class="p">)</span>
+                    <span class="n">mod_num</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="n">site_num</span> <span class="o">+=</span> <span class="n">left_core</span><span class="o">.</span><span class="n">core_len</span><span class="p">()</span>
+
+                <span class="c1"># If we get something new, move to the next distinct pair</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">assert</span> <span class="n">new_core</span><span class="o">.</span><span class="n">core_len</span><span class="p">()</span> <span class="o">==</span> <span class="n">left_core</span><span class="o">.</span><span class="n">core_len</span><span class="p">()</span> <span class="o">+</span> \
+                                                  <span class="n">right_core</span><span class="o">.</span><span class="n">core_len</span><span class="p">()</span>
+                    <span class="n">combined_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">new_core</span><span class="p">)</span>
+                    <span class="n">mod_num</span> <span class="o">+=</span> <span class="mi">2</span>
+                    <span class="n">site_num</span> <span class="o">+=</span> <span class="n">new_core</span><span class="o">.</span><span class="n">core_len</span><span class="p">()</span>
+
+                <span class="c1"># Add the last core if there&#39;s nothing to merge it with</span>
+                <span class="k">if</span> <span class="n">mod_num</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">merged_list</span><span class="p">)</span><span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+                    <span class="n">combined_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">merged_list</span><span class="p">[</span><span class="n">mod_num</span><span class="p">])</span>
+                    <span class="n">mod_num</span> <span class="o">+=</span> <span class="mi">1</span>
+
+            <span class="c1"># We&#39;re finished when unmerged_list remains unchanged</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">combined_list</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">merged_list</span><span class="p">):</span>
+                <span class="k">break</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">merged_list</span> <span class="o">=</span> <span class="n">combined_list</span>
+
+        <span class="c1"># Finally, update the appropriate merged module list</span>
+        <span class="n">list_name</span> <span class="o">=</span> <span class="n">f</span><span class="s2">&quot;module_list_</span><span class="si">{offset}</span><span class="s2">&quot;</span>
+        <span class="c1"># If the merged module list hasn&#39;t been set yet, initialize it</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">list_name</span><span class="p">):</span>
+            <span class="nb">setattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">list_name</span><span class="p">,</span> <span class="n">nn</span><span class="o">.</span><span class="n">ModuleList</span><span class="p">(</span><span class="n">merged_list</span><span class="p">))</span>
+
+        <span class="c1"># Otherwise, do an in-place update so that all tensors remain</span>
+        <span class="c1"># properly registered with whatever optimizer we use</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">module_list</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">list_name</span><span class="p">)</span>
+            <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">module_list</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">merged_list</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">module_list</span><span class="p">)):</span>
+                <span class="k">assert</span> <span class="n">module_list</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">tensor</span><span class="o">.</span><span class="n">shape</span> <span class="o">==</span> \
+                       <span class="n">merged_list</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">tensor</span><span class="o">.</span><span class="n">shape</span>
+                <span class="n">module_list</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">tensor</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">merged_list</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">tensor</span>
+
+    <span class="nd">@torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">()</span>
+    <span class="k">def</span> <span class="nf">_unmerge</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cutoff</span><span class="o">=</span><span class="mf">1e-10</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Convert merged modules to unmerged counterparts</span>
+
+<span class="sd">        Calling _unmerge (or _merge) directly can cause undefined behavior, </span>
+<span class="sd">        but see MergedLinearRegion.forward for intended use</span>
+
+<span class="sd">        This proceeds by first unmerging all merged cores internally, then</span>
+<span class="sd">        combining lone cores where possible</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">list_name</span> <span class="o">=</span> <span class="n">f</span><span class="s2">&quot;module_list_</span><span class="si">{self.offset}</span><span class="s2">&quot;</span>
+        <span class="n">merged_list</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">list_name</span><span class="p">)</span>
+
+        <span class="c1"># Unmerge each core internally and add results to unmerged_list</span>
+        <span class="n">unmerged_list</span><span class="p">,</span> <span class="n">bond_list</span><span class="p">,</span> <span class="n">sv_list</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">core</span> <span class="ow">in</span> <span class="n">merged_list</span><span class="p">:</span>
+
+            <span class="c1"># Apply internal unmerging routine if our core supports it</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">core</span><span class="p">,</span> <span class="s1">&#39;_unmerge&#39;</span><span class="p">):</span>
+                <span class="n">new_cores</span><span class="p">,</span> <span class="n">new_bonds</span><span class="p">,</span> <span class="n">new_svs</span> <span class="o">=</span> <span class="n">core</span><span class="o">.</span><span class="n">_unmerge</span><span class="p">(</span><span class="n">cutoff</span><span class="p">)</span>
+                <span class="n">unmerged_list</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">new_cores</span><span class="p">)</span>
+                <span class="n">bond_list</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">new_bonds</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+                <span class="n">sv_list</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">new_svs</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">assert</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">core</span><span class="p">,</span> <span class="n">InputRegion</span><span class="p">)</span>
+                <span class="n">unmerged_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">core</span><span class="p">)</span>
+                <span class="n">bond_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+                <span class="n">sv_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1"># Combine all combinable pairs of cores. This occurs in several</span>
+        <span class="c1"># passes, and for now acts nontrivially only on InputSite instances</span>
+        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="n">mod_num</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">combined_list</span> <span class="o">=</span> <span class="p">[]</span>
+
+            <span class="k">while</span> <span class="n">mod_num</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">unmerged_list</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">left_core</span><span class="p">,</span> <span class="n">right_core</span> <span class="o">=</span> <span class="n">unmerged_list</span><span class="p">[</span><span class="n">mod_num</span><span class="p">:</span> <span class="n">mod_num</span><span class="o">+</span><span class="mi">2</span><span class="p">]</span>
+                <span class="n">new_core</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">combine</span><span class="p">(</span><span class="n">left_core</span><span class="p">,</span> <span class="n">right_core</span><span class="p">,</span>
+                                                   <span class="n">merging</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+
+                <span class="c1"># If cores aren&#39;t combinable, move our sliding window by 1</span>
+                <span class="k">if</span> <span class="n">new_core</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">combined_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">left_core</span><span class="p">)</span>
+                    <span class="n">mod_num</span> <span class="o">+=</span> <span class="mi">1</span>
+
+                <span class="c1"># If we get something new, move to the next distinct pair</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">combined_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">new_core</span><span class="p">)</span>
+                    <span class="n">mod_num</span> <span class="o">+=</span> <span class="mi">2</span>
+
+                <span class="c1"># Add the last core if there&#39;s nothing to combine it with</span>
+                <span class="k">if</span> <span class="n">mod_num</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">unmerged_list</span><span class="p">)</span><span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+                    <span class="n">combined_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">unmerged_list</span><span class="p">[</span><span class="n">mod_num</span><span class="p">])</span>
+                    <span class="n">mod_num</span> <span class="o">+=</span> <span class="mi">1</span>
+
+            <span class="c1"># We&#39;re finished when unmerged_list remains unchanged</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">combined_list</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">unmerged_list</span><span class="p">):</span>
+                <span class="k">break</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">unmerged_list</span> <span class="o">=</span> <span class="n">combined_list</span>
+
+        <span class="c1"># Find the average (log) norm of all of our cores</span>
+        <span class="n">log_norms</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">core</span> <span class="ow">in</span> <span class="n">unmerged_list</span><span class="p">:</span>
+            <span class="n">log_norms</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="n">torch</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">norm</span><span class="p">)</span> <span class="k">for</span> <span class="n">norm</span> <span class="ow">in</span> <span class="n">core</span><span class="o">.</span><span class="n">get_norm</span><span class="p">()])</span>
+        <span class="n">log_scale</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">([</span><span class="nb">sum</span><span class="p">(</span><span class="n">ns</span><span class="p">)</span> <span class="k">for</span> <span class="n">ns</span> <span class="ow">in</span> <span class="n">log_norms</span><span class="p">])</span>
+        <span class="n">log_scale</span> <span class="o">/=</span> <span class="nb">sum</span><span class="p">([</span><span class="nb">len</span><span class="p">(</span><span class="n">ns</span><span class="p">)</span> <span class="k">for</span> <span class="n">ns</span> <span class="ow">in</span> <span class="n">log_norms</span><span class="p">])</span>
+
+        <span class="c1"># Now rescale all cores so that their norms are roughly equal</span>
+        <span class="n">scales</span> <span class="o">=</span> <span class="p">[[</span><span class="n">torch</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">log_scale</span><span class="o">-</span><span class="n">n</span><span class="p">)</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">ns</span><span class="p">]</span> <span class="k">for</span> <span class="n">ns</span> <span class="ow">in</span> <span class="n">log_norms</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">core</span><span class="p">,</span> <span class="n">these_scales</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">unmerged_list</span><span class="p">,</span> <span class="n">scales</span><span class="p">):</span>
+            <span class="n">core</span><span class="o">.</span><span class="n">rescale_norm</span><span class="p">(</span><span class="n">these_scales</span><span class="p">)</span>
+
+        <span class="c1"># Add our unmerged module list as a new attribute and return</span>
+        <span class="c1"># the updated bond dimensions</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">module_list</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">ModuleList</span><span class="p">(</span><span class="n">unmerged_list</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">bond_list</span><span class="p">,</span> <span class="n">sv_list</span>
+
+    <span class="k">def</span> <span class="nf">combine</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">left_core</span><span class="p">,</span> <span class="n">right_core</span><span class="p">,</span> <span class="n">merging</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Combine a pair of cores into a new core using context-dependent rules</span>
+
+<span class="sd">        Depending on the types of left_core and right_core, along with whether</span>
+<span class="sd">        we&#39;re currently merging (merging=True) or unmerging (merging=False),</span>
+<span class="sd">        either return a new core, or None if no rule exists for this context</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># Combine an OutputSite with a stray InputSite, return a MergedOutput</span>
+        <span class="k">if</span> <span class="n">merging</span> <span class="ow">and</span> <span class="p">((</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">left_core</span><span class="p">,</span> <span class="n">OutputSite</span><span class="p">)</span> <span class="ow">and</span>
+                         <span class="nb">isinstance</span><span class="p">(</span><span class="n">right_core</span><span class="p">,</span> <span class="n">InputSite</span><span class="p">))</span> <span class="ow">or</span>
+                            <span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">left_core</span><span class="p">,</span> <span class="n">InputSite</span><span class="p">)</span> <span class="ow">and</span>
+                            <span class="nb">isinstance</span><span class="p">(</span><span class="n">right_core</span><span class="p">,</span> <span class="n">OutputSite</span><span class="p">))):</span>
+
+            <span class="n">left_site</span> <span class="o">=</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">left_core</span><span class="p">,</span> <span class="n">InputSite</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">left_site</span><span class="p">:</span>
+                <span class="n">new_tensor</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">einsum</span><span class="p">(</span><span class="s1">&#39;lui,our-&gt;olri&#39;</span><span class="p">,</span> <span class="p">[</span><span class="n">left_core</span><span class="o">.</span><span class="n">tensor</span><span class="p">,</span>
+                                                            <span class="n">right_core</span><span class="o">.</span><span class="n">tensor</span><span class="p">])</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">new_tensor</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">einsum</span><span class="p">(</span><span class="s1">&#39;olu,uri-&gt;olri&#39;</span><span class="p">,</span> <span class="p">[</span><span class="n">left_core</span><span class="o">.</span><span class="n">tensor</span><span class="p">,</span>
+                                                            <span class="n">right_core</span><span class="o">.</span><span class="n">tensor</span><span class="p">])</span>
+            <span class="k">return</span> <span class="n">MergedOutput</span><span class="p">(</span><span class="n">new_tensor</span><span class="p">,</span> <span class="n">left_output</span><span class="o">=</span><span class="p">(</span><span class="ow">not</span> <span class="n">left_site</span><span class="p">))</span>
+
+        <span class="c1"># Combine an InputRegion with a stray InputSite, return an InputRegion</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="n">merging</span> <span class="ow">and</span> <span class="p">((</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">left_core</span><span class="p">,</span> <span class="n">InputRegion</span><span class="p">)</span> <span class="ow">and</span>
+                               <span class="nb">isinstance</span><span class="p">(</span><span class="n">right_core</span><span class="p">,</span> <span class="n">InputSite</span><span class="p">))</span> <span class="ow">or</span>
+                                    <span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">left_core</span><span class="p">,</span> <span class="n">InputSite</span><span class="p">)</span> <span class="ow">and</span>
+                                    <span class="nb">isinstance</span><span class="p">(</span><span class="n">right_core</span><span class="p">,</span> <span class="n">InputRegion</span><span class="p">))):</span>
+
+            <span class="n">left_site</span> <span class="o">=</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">left_core</span><span class="p">,</span> <span class="n">InputSite</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">left_site</span><span class="p">:</span>
+                <span class="n">left_tensor</span> <span class="o">=</span> <span class="n">left_core</span><span class="o">.</span><span class="n">tensor</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+                <span class="n">right_tensor</span> <span class="o">=</span> <span class="n">right_core</span><span class="o">.</span><span class="n">tensor</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">left_tensor</span> <span class="o">=</span> <span class="n">left_core</span><span class="o">.</span><span class="n">tensor</span>
+                <span class="n">right_tensor</span> <span class="o">=</span> <span class="n">right_core</span><span class="o">.</span><span class="n">tensor</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+            <span class="k">assert</span> <span class="n">left_tensor</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="o">==</span> <span class="n">right_tensor</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span>
+            <span class="n">new_tensor</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">left_tensor</span><span class="p">,</span> <span class="n">right_tensor</span><span class="p">])</span>
+
+            <span class="k">return</span> <span class="n">InputRegion</span><span class="p">(</span><span class="n">new_tensor</span><span class="p">)</span>
+
+        <span class="c1"># If this situation doesn&#39;t belong to the above cases, return None</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+    <span class="k">def</span> <span class="nf">core_len</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the number of cores, which is at least the required input size</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">sum</span><span class="p">([</span><span class="n">module</span><span class="o">.</span><span class="n">core_len</span><span class="p">()</span> <span class="k">for</span> <span class="n">module</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">module_list</span><span class="p">])</span>
+
+    <span class="k">def</span> <span class="nf">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the number of input sites, which is the required input size</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">sum</span><span class="p">([</span><span class="nb">len</span><span class="p">(</span><span class="n">module</span><span class="p">)</span> <span class="k">for</span> <span class="n">module</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">module_list</span><span class="p">])</span>
+
+<span class="k">class</span> <span class="nc">InputRegion</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Contiguous region of MPS input cores, associated with bond_str = &#39;slri&#39;</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tensor</span><span class="p">,</span> <span class="n">use_bias</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">fixed_bias</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">bias_mat</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">ephemeral</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+
+        <span class="c1"># Make sure tensor has correct size and the component mats are square</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">tensor</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">4</span>
+        <span class="k">assert</span> <span class="n">tensor</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="o">==</span> <span class="n">tensor</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+        <span class="n">bond_dim</span> <span class="o">=</span> <span class="n">tensor</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1"># If we are using bias matrices, set those up here</span>
+        <span class="k">if</span> <span class="n">use_bias</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="n">bias_mat</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">bias_mat</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">)</span>
+            <span class="n">bias_mat</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">bond_dim</span><span class="p">)</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="k">if</span> <span class="n">bias_mat</span> <span class="ow">is</span> <span class="kc">None</span> \
+                       <span class="k">else</span> <span class="n">bias_mat</span>
+
+            <span class="n">bias_modes</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">bias_mat</span><span class="o">.</span><span class="n">shape</span><span class="p">))</span>
+            <span class="k">assert</span> <span class="n">bias_modes</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">bias_modes</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="n">bias_mat</span> <span class="o">=</span> <span class="n">bias_mat</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+        <span class="c1"># Register our tensors as a Pytorch Parameter or Tensor</span>
+        <span class="k">if</span> <span class="n">ephemeral</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">register_buffer</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;tensor&#39;</span><span class="p">,</span> <span class="n">tensor</span><span class="o">=</span><span class="n">tensor</span><span class="o">.</span><span class="n">contiguous</span><span class="p">())</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">register_buffer</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;bias_mat&#39;</span><span class="p">,</span> <span class="n">tensor</span><span class="o">=</span><span class="n">bias_mat</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">register_parameter</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;tensor&#39;</span><span class="p">,</span> 
+                                    <span class="n">param</span><span class="o">=</span><span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="n">tensor</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()))</span>
+            <span class="k">if</span> <span class="n">fixed_bias</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">register_buffer</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;bias_mat&#39;</span><span class="p">,</span> <span class="n">tensor</span><span class="o">=</span><span class="n">bias_mat</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">register_parameter</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;bias_mat&#39;</span><span class="p">,</span> 
+                                        <span class="n">param</span><span class="o">=</span><span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="n">bias_mat</span><span class="p">))</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">use_bias</span> <span class="o">=</span> <span class="n">use_bias</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fixed_bias</span> <span class="o">=</span> <span class="n">fixed_bias</span>
+        
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_data</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Contract input with MPS cores and return result as a MatRegion</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            input_data (Tensor): Input with shape [batch_size, input_dim,</span>
+<span class="sd">                                                   feature_dim]</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Check that input_data has the correct shape</span>
+        <span class="n">tensor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tensor</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">input_data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">3</span>
+        <span class="k">assert</span> <span class="n">input_data</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">input_data</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span> <span class="o">==</span> <span class="n">tensor</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+
+        <span class="c1"># Contract the input with our core tensor</span>
+        <span class="n">mats</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">einsum</span><span class="p">(</span><span class="s1">&#39;slri,bsi-&gt;bslr&#39;</span><span class="p">,</span> <span class="p">[</span><span class="n">tensor</span><span class="p">,</span> <span class="n">input_data</span><span class="p">])</span>
+
+        <span class="c1"># If we&#39;re using bias matrices, add those here</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_bias</span><span class="p">:</span>
+            <span class="n">bond_dim</span> <span class="o">=</span> <span class="n">tensor</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">bias_mat</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">bias_mat</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">mats</span> <span class="o">=</span> <span class="n">mats</span> <span class="o">+</span> <span class="n">bias_mat</span><span class="o">.</span><span class="n">expand_as</span><span class="p">(</span><span class="n">mats</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">MatRegion</span><span class="p">(</span><span class="n">mats</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_merge</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">offset</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Merge all pairs of neighboring cores and return a new list of cores</span>
+
+<span class="sd">        offset is either 0 or 1, which gives the first core at which we start</span>
+<span class="sd">        our merging. Depending on the length of our InputRegion, the output of</span>
+<span class="sd">        merge may have 1, 2, or 3 entries, with the majority of sites ending in</span>
+<span class="sd">        a MergedInput instance</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">assert</span> <span class="n">offset</span> <span class="ow">in</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+        <span class="n">num_sites</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">core_len</span><span class="p">()</span>
+        <span class="n">parity</span> <span class="o">=</span> <span class="n">num_sites</span> <span class="o">%</span> <span class="mi">2</span>
+
+        <span class="c1"># Cases with empty tensors might arise in recursion below</span>
+        <span class="k">if</span> <span class="n">num_sites</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span>
+
+        <span class="c1"># Simplify the problem into one where offset=0 and num_sites is even</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">offset</span><span class="p">,</span> <span class="n">parity</span><span class="p">)</span> <span class="o">==</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="n">out_list</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="bp">self</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span><span class="o">.</span><span class="n">_merge</span><span class="p">(</span><span class="n">offset</span><span class="o">=</span><span class="mi">0</span><span class="p">)[</span><span class="mi">0</span><span class="p">]]</span>
+        <span class="k">elif</span> <span class="p">(</span><span class="n">offset</span><span class="p">,</span> <span class="n">parity</span><span class="p">)</span> <span class="o">==</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">):</span>
+            <span class="n">out_list</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="bp">self</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">_merge</span><span class="p">(</span><span class="n">offset</span><span class="o">=</span><span class="mi">0</span><span class="p">)[</span><span class="mi">0</span><span class="p">],</span> <span class="bp">self</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span>
+        <span class="k">elif</span> <span class="p">(</span><span class="n">offset</span><span class="p">,</span> <span class="n">parity</span><span class="p">)</span> <span class="o">==</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="n">out_list</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">_merge</span><span class="p">(</span><span class="n">offset</span><span class="o">=</span><span class="mi">0</span><span class="p">)[</span><span class="mi">0</span><span class="p">],</span> <span class="bp">self</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span>
+
+        <span class="c1"># The main case of interest, with no offset and an even number of sites</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">tensor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tensor</span>
+            <span class="n">even_cores</span><span class="p">,</span> <span class="n">odd_cores</span> <span class="o">=</span> <span class="n">tensor</span><span class="p">[</span><span class="mi">0</span><span class="p">::</span><span class="mi">2</span><span class="p">],</span> <span class="n">tensor</span><span class="p">[</span><span class="mi">1</span><span class="p">::</span><span class="mi">2</span><span class="p">]</span>
+            <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">even_cores</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">odd_cores</span><span class="p">)</span>
+
+            <span class="c1"># Multiply all pairs of cores, keeping inputs separate</span>
+            <span class="n">merged_cores</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">einsum</span><span class="p">(</span><span class="s1">&#39;slui,surj-&gt;slrij&#39;</span><span class="p">,</span> <span class="p">[</span><span class="n">even_cores</span><span class="p">,</span>
+                                                             <span class="n">odd_cores</span><span class="p">])</span>
+            <span class="n">out_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">MergedInput</span><span class="p">(</span><span class="n">merged_cores</span><span class="p">)]</span>
+
+        <span class="c1"># Remove empty MergedInputs, which appear in very small InputRegions</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">out_list</span> <span class="k">if</span> <span class="n">x</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">]</span>
+
+    <span class="k">def</span> <span class="nf">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns an InputRegion instance sliced along the site index</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="nb">slice</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="nb">slice</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">InputRegion</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tensor</span><span class="p">[</span><span class="n">key</span><span class="p">])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">InputSite</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tensor</span><span class="p">[</span><span class="n">key</span><span class="p">])</span>
+
+    <span class="k">def</span> <span class="nf">get_norm</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns list of the norms of each core in InputRegion</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">core</span><span class="p">)</span> <span class="k">for</span> <span class="n">core</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">tensor</span><span class="p">]</span>
+
+    <span class="nd">@torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">()</span>
+    <span class="k">def</span> <span class="nf">rescale_norm</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">scale_list</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Rescales the norm of each core by an amount specified in scale_list</span>
+
+<span class="sd">        For the i&#39;th tensor defining a core in InputRegion, we rescale as</span>
+<span class="sd">        tensor_i &lt;- scale_i * tensor_i, where scale_i = scale_list[i]</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">scale_list</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tensor</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">core</span><span class="p">,</span> <span class="n">scale</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tensor</span><span class="p">,</span> <span class="n">scale_list</span><span class="p">):</span>
+            <span class="n">core</span> <span class="o">*=</span> <span class="n">scale</span>
+
+    <span class="k">def</span> <span class="nf">core_len</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">tensor</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+<span class="k">class</span> <span class="nc">MergedInput</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Contiguous region of merged MPS cores, each taking in a pair of input data</span>
+
+<span class="sd">    Since MergedInput arises after contracting together existing input cores,</span>
+<span class="sd">    a merged input tensor is required for initialization</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tensor</span><span class="p">):</span>
+        <span class="c1"># Check that our input tensor has the correct shape</span>
+        <span class="n">bond_str</span> <span class="o">=</span> <span class="s1">&#39;slrij&#39;</span>
+        <span class="n">shape</span> <span class="o">=</span> <span class="n">tensor</span><span class="o">.</span><span class="n">shape</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">5</span>
+        <span class="k">assert</span> <span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">shape</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+        <span class="k">assert</span> <span class="n">shape</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">==</span> <span class="n">shape</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+
+        <span class="c1"># Register our tensor as a Pytorch Parameter</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">register_parameter</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;tensor&#39;</span><span class="p">,</span> 
+                                <span class="n">param</span><span class="o">=</span><span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="n">tensor</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()))</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_data</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Contract input with merged MPS cores and return result as a MatRegion</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            input_data (Tensor): Input with shape [batch_size, input_dim,</span>
+<span class="sd">                                 feature_dim], where input_dim must be even</span>
+<span class="sd">                                 (each merged core takes 2 inputs)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Check that input_data has the correct shape</span>
+        <span class="n">tensor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tensor</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">input_data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">3</span>
+        <span class="k">assert</span> <span class="n">input_data</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">input_data</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span> <span class="o">==</span> <span class="n">tensor</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="n">input_data</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">==</span> <span class="mi">0</span>
+
+        <span class="c1"># Divide input_data into inputs living on even and on odd sites</span>
+        <span class="n">inputs</span> <span class="o">=</span> <span class="p">[</span><span class="n">input_data</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">::</span><span class="mi">2</span><span class="p">],</span> <span class="n">input_data</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">::</span><span class="mi">2</span><span class="p">]]</span>
+
+        <span class="c1"># Contract the odd (right-most) and even inputs with merged cores</span>
+        <span class="n">tensor</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">einsum</span><span class="p">(</span><span class="s1">&#39;slrij,bsj-&gt;bslri&#39;</span><span class="p">,</span> <span class="p">[</span><span class="n">tensor</span><span class="p">,</span> <span class="n">inputs</span><span class="p">[</span><span class="mi">1</span><span class="p">]])</span>
+        <span class="n">mats</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">einsum</span><span class="p">(</span><span class="s1">&#39;bslri,bsi-&gt;bslr&#39;</span><span class="p">,</span> <span class="p">[</span><span class="n">tensor</span><span class="p">,</span> <span class="n">inputs</span><span class="p">[</span><span class="mi">0</span><span class="p">]])</span>
+
+        <span class="k">return</span> <span class="n">MatRegion</span><span class="p">(</span><span class="n">mats</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_unmerge</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cutoff</span><span class="o">=</span><span class="mf">1e-10</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Separate the cores in our MergedInput and return an InputRegion</span>
+
+<span class="sd">        The length of the resultant InputRegion will be identical to our</span>
+<span class="sd">        original MergedInput (same number of inputs), but its core_len will</span>
+<span class="sd">        be doubled (twice as many individual cores)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">bond_str</span> <span class="o">=</span> <span class="s1">&#39;slrij&#39;</span>
+        <span class="n">tensor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tensor</span>
+        <span class="n">svd_string</span> <span class="o">=</span> <span class="s1">&#39;lrij-&gt;lui,urj&#39;</span>
+        <span class="n">max_D</span> <span class="o">=</span> <span class="n">tensor</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1"># Split every one of the cores into two and add them both to core_list</span>
+        <span class="n">core_list</span><span class="p">,</span> <span class="n">bond_list</span><span class="p">,</span> <span class="n">sv_list</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">merged_core</span> <span class="ow">in</span> <span class="n">tensor</span><span class="p">:</span>
+            <span class="n">sv_vec</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">max_D</span><span class="p">)</span>
+            <span class="n">left_core</span><span class="p">,</span> <span class="n">right_core</span><span class="p">,</span> <span class="n">bond_dim</span> <span class="o">=</span> <span class="n">svd_flex</span><span class="p">(</span><span class="n">merged_core</span><span class="p">,</span> <span class="n">svd_string</span><span class="p">,</span>
+                                              <span class="n">max_D</span><span class="p">,</span> <span class="n">cutoff</span><span class="p">,</span> <span class="n">sv_vec</span><span class="o">=</span><span class="n">sv_vec</span><span class="p">)</span>
+
+            <span class="n">core_list</span> <span class="o">+=</span> <span class="p">[</span><span class="n">left_core</span><span class="p">,</span> <span class="n">right_core</span><span class="p">]</span>
+            <span class="n">bond_list</span> <span class="o">+=</span> <span class="p">[</span><span class="n">bond_dim</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">sv_list</span> <span class="o">+=</span> <span class="p">[</span><span class="n">sv_vec</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+
+        <span class="c1"># Collate the split cores into one tensor and return as an InputRegion</span>
+        <span class="n">tensor</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="n">core_list</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">InputRegion</span><span class="p">(</span><span class="n">tensor</span><span class="p">)],</span> <span class="n">bond_list</span><span class="p">,</span> <span class="n">sv_list</span>
+
+    <span class="k">def</span> <span class="nf">get_norm</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns list of the norm of each core in MergedInput</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">core</span><span class="p">)</span> <span class="k">for</span> <span class="n">core</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">tensor</span><span class="p">]</span>
+
+    <span class="nd">@torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">()</span>
+    <span class="k">def</span> <span class="nf">rescale_norm</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">scale_list</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Rescales the norm of each core by an amount specified in scale_list</span>
+
+<span class="sd">        For the i&#39;th tensor defining a core in MergedInput, we rescale as</span>
+<span class="sd">        tensor_i &lt;- scale_i * tensor_i, where scale_i = scale_list[i]</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">scale_list</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tensor</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">core</span><span class="p">,</span> <span class="n">scale</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tensor</span><span class="p">,</span> <span class="n">scale_list</span><span class="p">):</span>
+            <span class="n">core</span> <span class="o">*=</span> <span class="n">scale</span>
+
+    <span class="k">def</span> <span class="nf">core_len</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the number of input sites, which is twice the number of cores</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="mi">2</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">tensor</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+<span class="k">class</span> <span class="nc">InputSite</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A single MPS core which takes in a single input datum, bond_str = &#39;lri&#39;</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tensor</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="c1"># Register our tensor as a Pytorch Parameter</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">register_parameter</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;tensor&#39;</span><span class="p">,</span> 
+                                <span class="n">param</span><span class="o">=</span><span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="n">tensor</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()))</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_data</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Contract input with MPS core and return result as a SingleMat</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            input_data (Tensor): Input with shape [batch_size, feature_dim]</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Check that input_data has the correct shape</span>
+        <span class="n">tensor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tensor</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">input_data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span>
+        <span class="k">assert</span> <span class="n">input_data</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="o">==</span> <span class="n">tensor</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+
+        <span class="c1"># Contract the input with our core tensor</span>
+        <span class="n">mat</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">einsum</span><span class="p">(</span><span class="s1">&#39;lri,bi-&gt;blr&#39;</span><span class="p">,</span> <span class="p">[</span><span class="n">tensor</span><span class="p">,</span> <span class="n">input_data</span><span class="p">])</span>
+
+        <span class="k">return</span> <span class="n">SingleMat</span><span class="p">(</span><span class="n">mat</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">get_norm</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the norm of our core tensor, wrapped as a singleton list</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tensor</span><span class="p">)]</span>
+
+    <span class="nd">@torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">()</span>
+    <span class="k">def</span> <span class="nf">rescale_norm</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">scale</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Rescales the norm of our core by a factor of input `scale`</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">scale</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">scale</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span>
+            <span class="n">scale</span> <span class="o">=</span> <span class="n">scale</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">tensor</span> <span class="o">*=</span> <span class="n">scale</span>
+
+    <span class="k">def</span> <span class="nf">core_len</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="mi">1</span>
+
+    <span class="k">def</span> <span class="nf">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="mi">1</span>
+
+<span class="k">class</span> <span class="nc">OutputSite</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A single MPS core with no input and a single output index, bond_str = &#39;olr&#39;</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tensor</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+        <span class="c1"># Register our tensor as a Pytorch Parameter</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">register_parameter</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;tensor&#39;</span><span class="p">,</span> 
+                                <span class="n">param</span><span class="o">=</span><span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="n">tensor</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()))</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_data</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return the OutputSite wrapped as an OutputCore contractable</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">OutputCore</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tensor</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">get_norm</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the norm of our core tensor, wrapped as a singleton list</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tensor</span><span class="p">)]</span>
+
+    <span class="nd">@torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">()</span>
+    <span class="k">def</span> <span class="nf">rescale_norm</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">scale</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Rescales the norm of our core by a factor of input `scale`</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">scale</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">scale</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span>
+            <span class="n">scale</span> <span class="o">=</span> <span class="n">scale</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">tensor</span> <span class="o">*=</span> <span class="n">scale</span>
+
+    <span class="k">def</span> <span class="nf">core_len</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="mi">1</span>
+
+    <span class="k">def</span> <span class="nf">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="mi">0</span>
+
+<span class="k">class</span> <span class="nc">MergedOutput</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Merged MPS core taking in one input datum and returning an output vector</span>
+
+<span class="sd">    Since MergedOutput arises after contracting together an existing input and</span>
+<span class="sd">    output core, an already-merged tensor is required for initialization</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        tensor (Tensor):    Value that our merged core is initialized to</span>
+<span class="sd">        left_output (bool): Specifies if the output core is on the left side of</span>
+<span class="sd">                            the input core (True), or on the right (False)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tensor</span><span class="p">,</span> <span class="n">left_output</span><span class="p">):</span>
+        <span class="c1"># Check that our input tensor has the correct shape</span>
+        <span class="n">bond_str</span> <span class="o">=</span> <span class="s1">&#39;olri&#39;</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">tensor</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">4</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+
+        <span class="c1"># Register our tensor as a Pytorch Parameter</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">register_parameter</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;tensor&#39;</span><span class="p">,</span> 
+                                <span class="n">param</span><span class="o">=</span><span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="n">tensor</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">left_output</span> <span class="o">=</span> <span class="n">left_output</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_data</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Contract input with input index of core and return an OutputCore</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            input_data (Tensor): Input with shape [batch_size, feature_dim]</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Check that input_data has the correct shape</span>
+        <span class="n">tensor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tensor</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">input_data</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span>
+        <span class="k">assert</span> <span class="n">input_data</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="o">==</span> <span class="n">tensor</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+
+        <span class="c1"># Contract the input with our core tensor</span>
+        <span class="n">tensor</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">einsum</span><span class="p">(</span><span class="s1">&#39;olri,bi-&gt;bolr&#39;</span><span class="p">,</span> <span class="p">[</span><span class="n">tensor</span><span class="p">,</span> <span class="n">input_data</span><span class="p">])</span>
+
+        <span class="k">return</span> <span class="n">OutputCore</span><span class="p">(</span><span class="n">tensor</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_unmerge</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cutoff</span><span class="o">=</span><span class="mf">1e-10</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Split our MergedOutput into an OutputSite and an InputSite</span>
+
+<span class="sd">        The non-zero entries of our tensors are dynamically sized according to</span>
+<span class="sd">        the SVD cutoff, but will generally be padded with zeros to give the</span>
+<span class="sd">        new index a regular size.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">bond_str</span> <span class="o">=</span> <span class="s1">&#39;olri&#39;</span>
+        <span class="n">tensor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tensor</span>
+        <span class="n">left_output</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">left_output</span>
+        <span class="k">if</span> <span class="n">left_output</span><span class="p">:</span>
+            <span class="n">svd_string</span> <span class="o">=</span> <span class="s1">&#39;olri-&gt;olu,uri&#39;</span>
+            <span class="n">max_D</span> <span class="o">=</span> <span class="n">tensor</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+            <span class="n">sv_vec</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">max_D</span><span class="p">)</span>
+
+            <span class="n">output_core</span><span class="p">,</span> <span class="n">input_core</span><span class="p">,</span> <span class="n">bond_dim</span> <span class="o">=</span> <span class="n">svd_flex</span><span class="p">(</span><span class="n">tensor</span><span class="p">,</span> <span class="n">svd_string</span><span class="p">,</span>
+                                                <span class="n">max_D</span><span class="p">,</span> <span class="n">cutoff</span><span class="p">,</span> <span class="n">sv_vec</span><span class="o">=</span><span class="n">sv_vec</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">([</span><span class="n">OutputSite</span><span class="p">(</span><span class="n">output_core</span><span class="p">),</span> <span class="n">InputSite</span><span class="p">(</span><span class="n">input_core</span><span class="p">)],</span>
+                    <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">bond_dim</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">sv_vec</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">svd_string</span> <span class="o">=</span> <span class="s1">&#39;olri-&gt;our,lui&#39;</span>
+            <span class="n">max_D</span> <span class="o">=</span> <span class="n">tensor</span><span class="o">.</span><span class="n">size</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">sv_vec</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">max_D</span><span class="p">)</span>
+
+            <span class="n">output_core</span><span class="p">,</span> <span class="n">input_core</span><span class="p">,</span> <span class="n">bond_dim</span> <span class="o">=</span> <span class="n">svd_flex</span><span class="p">(</span><span class="n">tensor</span><span class="p">,</span> <span class="n">svd_string</span><span class="p">,</span>
+                                                <span class="n">max_D</span><span class="p">,</span> <span class="n">cutoff</span><span class="p">,</span> <span class="n">sv_vec</span><span class="o">=</span><span class="n">sv_vec</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">([</span><span class="n">InputSite</span><span class="p">(</span><span class="n">input_core</span><span class="p">),</span> <span class="n">OutputSite</span><span class="p">(</span><span class="n">output_core</span><span class="p">)],</span>
+                    <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">bond_dim</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">sv_vec</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+
+    <span class="k">def</span> <span class="nf">get_norm</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Returns the norm of our core tensor, wrapped as a singleton list</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tensor</span><span class="p">)]</span>
+
+    <span class="nd">@torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">()</span>
+    <span class="k">def</span> <span class="nf">rescale_norm</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">scale</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Rescales the norm of our core by a factor of input `scale`</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">scale</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">scale</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span>
+            <span class="n">scale</span> <span class="o">=</span> <span class="n">scale</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">tensor</span> <span class="o">*=</span> <span class="n">scale</span>
+
+    <span class="k">def</span> <span class="nf">core_len</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="mi">2</span>
+
+    <span class="k">def</span> <span class="nf">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="mi">1</span>
+
+<span class="k">class</span> <span class="nc">InitialVector</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Vector of ones and zeros to act as initial vector within the MPS</span>
+
+<span class="sd">    By default the initial vector is chosen to be all ones, but if fill_dim is</span>
+<span class="sd">    specified then only the first fill_dim entries are set to one, with the</span>
+<span class="sd">    rest zero.</span>
+
+<span class="sd">    If fixed_vec is False, then the initial vector will be registered as a </span>
+<span class="sd">    trainable model parameter.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">bond_dim</span><span class="p">,</span> <span class="n">fill_dim</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">fixed_vec</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> 
+                 <span class="n">is_left_vec</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+
+        <span class="n">vec</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">bond_dim</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">fill_dim</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">assert</span> <span class="n">fill_dim</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">fill_dim</span> <span class="o">&lt;=</span> <span class="n">bond_dim</span>
+            <span class="n">vec</span><span class="p">[</span><span class="n">fill_dim</span><span class="p">:]</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="k">if</span> <span class="n">fixed_vec</span><span class="p">:</span>
+            <span class="n">vec</span><span class="o">.</span><span class="n">requires_grad</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">register_buffer</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;vec&#39;</span><span class="p">,</span> <span class="n">tensor</span><span class="o">=</span><span class="n">vec</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">vec</span><span class="o">.</span><span class="n">requires_grad</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">register_parameter</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;vec&#39;</span><span class="p">,</span> <span class="n">param</span><span class="o">=</span><span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="n">vec</span><span class="p">))</span>
+        
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">is_left_vec</span><span class="p">,</span> <span class="nb">bool</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">is_left_vec</span> <span class="o">=</span> <span class="n">is_left_vec</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return our initial vector wrapped as an EdgeVec contractable</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">EdgeVec</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vec</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_left_vec</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">core_len</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="mi">1</span>
+
+    <span class="k">def</span> <span class="nf">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="mi">0</span>
+
+<span class="k">class</span> <span class="nc">TerminalOutput</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Output matrix at end of chain to transmute virtual state into output vector</span>
+
+<span class="sd">    By default, a fixed rectangular identity matrix with shape </span>
+<span class="sd">    [bond_dim, output_dim] will be used as a state transducer. If fixed_mat is</span>
+<span class="sd">    False, then the matrix will be registered as a trainable model parameter. </span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">bond_dim</span><span class="p">,</span> <span class="n">output_dim</span><span class="p">,</span> <span class="n">fixed_mat</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                 <span class="n">is_left_mat</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
+
+        <span class="c1"># I don&#39;t have a nice initialization scheme for a non-injective fixed</span>
+        <span class="c1"># state transducer, so just throw an error if that&#39;s needed</span>
+        <span class="k">if</span> <span class="n">fixed_mat</span> <span class="ow">and</span> <span class="n">output_dim</span> <span class="o">&gt;</span> <span class="n">bond_dim</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;With fixed_mat=True, TerminalOutput currently &quot;</span>
+                             <span class="s2">&quot;only supports initialization for bond_dim &gt;= &quot;</span>
+                             <span class="s2">&quot;output_dim, but here bond_dim=&quot;</span>
+                            <span class="n">f</span><span class="s2">&quot;</span><span class="si">{bond_dim}</span><span class="s2"> and output_dim=</span><span class="si">{output_dim}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Initialize the matrix and register it appropriately</span>
+        <span class="n">mat</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">bond_dim</span><span class="p">,</span> <span class="n">output_dim</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">fixed_mat</span><span class="p">:</span>
+            <span class="n">mat</span><span class="o">.</span><span class="n">requires_grad</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">register_buffer</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;mat&#39;</span><span class="p">,</span> <span class="n">tensor</span><span class="o">=</span><span class="n">mat</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Add some noise to help with training</span>
+            <span class="n">mat</span> <span class="o">=</span> <span class="n">mat</span> <span class="o">+</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn_like</span><span class="p">(</span><span class="n">mat</span><span class="p">)</span> <span class="o">/</span> <span class="n">bond_dim</span>
+
+            <span class="n">mat</span><span class="o">.</span><span class="n">requires_grad</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">register_parameter</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;mat&#39;</span><span class="p">,</span> <span class="n">param</span><span class="o">=</span><span class="n">nn</span><span class="o">.</span><span class="n">Parameter</span><span class="p">(</span><span class="n">mat</span><span class="p">))</span>
+
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">is_left_mat</span><span class="p">,</span> <span class="nb">bool</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">is_left_mat</span> <span class="o">=</span> <span class="n">is_left_mat</span>
+
+    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Return our terminal matrix wrapped as an OutputMat contractable</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">OutputMat</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mat</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">is_left_mat</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">core_len</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="mi">1</span>
+
+    <span class="k">def</span> <span class="nf">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="mi">0</span>
+</pre></div>
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="nav-item nav-item-0"><a href="../index.html">TorchMPS 0.1 documentation</a> &#187;</li>
+          <li class="nav-item nav-item-1"><a href="index.html" >Module code</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">torchmps</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2021, Jacob Miller.
+    </div>
+  </body>
+</html>

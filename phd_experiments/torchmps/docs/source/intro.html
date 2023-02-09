@@ -1,0 +1,122 @@
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TorchMPS: Matrix Product States in Pytorch &#8212; TorchMPS 0.1 documentation</title>
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/classic.css" type="text/css" />
+    
+    <script id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+    <script src="../_static/jquery.js"></script>
+    <script src="../_static/underscore.js"></script>
+    <script src="../_static/doctools.js"></script>
+    
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="TorchMPS Basic Usage" href="basic_usage.html" />
+    <link rel="prev" title="TorchMPS Documentation" href="../index.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="basic_usage.html" title="TorchMPS Basic Usage"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="../index.html" title="TorchMPS Documentation"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">TorchMPS 0.1 documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">TorchMPS: Matrix Product States in Pytorch</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="torchmps-matrix-product-states-in-pytorch">
+<h1>TorchMPS: Matrix Product States in Pytorch<a class="headerlink" href="#torchmps-matrix-product-states-in-pytorch" title="Permalink to this headline">¶</a></h1>
+<p>TorchMPS is a framework for working with matrix product state (also known as MPS or tensor train) models within Pytorch. Our MPS models are written as Pytorch Modules, and can simply be viewed as differentiable black boxes that are interchangeable with standard neural network layers. However, the rich structure of MPS’s allows for more interesting behavior, such as:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>A novel adaptive training algorithm (inspired by [Stoudenmire and Schwab 2016][S&amp;S]), which dynamically varies the MPS hyperparameters (MPS bond dimensions) during the course of training.</p></li>
+<li><p>Mechanisms for controlling MPS geometry, such as custom “routing” of the MPS through different regions of the input data, or periodic boundary conditions that give the MPS a circular topology.</p></li>
+<li><p>Choice of tensor contraction strategies, which represent flexible tradeoffs between computational cost and parallelizability of the computation graph.</p></li>
+</ul>
+</div></blockquote>
+<div class="section" id="what-our-mps-models-do">
+<h2>What our MPS Models Do<a class="headerlink" href="#what-our-mps-models-do" title="Permalink to this headline">¶</a></h2>
+<p>The function computed by our MPS Module comes from embedding input data in a high-dimensional feature space before contracting it with an MPS in the same space, as described in [Novikov, Trofimov, and Oseledets 2016][NTO] and [Stoudenmire and Schwab 2016][S&amp;S]. For scalar outputs, this contraction step is formally identical to linear regression, but the (exponentially) large feature space and MPS-parameterized weight vector makes the overall function significantly more expressive. In general, the output is associated with a single site of the MPS, whose placement within the network is a hyperparameter that varies the inductive bias towards different regions of the input data.</p>
+</div>
+</div>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="../index.html">Table of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">TorchMPS: Matrix Product States in Pytorch</a><ul>
+<li><a class="reference internal" href="#what-our-mps-models-do">What our MPS Models Do</a></li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="../index.html"
+                        title="previous chapter">TorchMPS Documentation</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="basic_usage.html"
+                        title="next chapter">TorchMPS Basic Usage</a></p>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/source/intro.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="basic_usage.html" title="TorchMPS Basic Usage"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="../index.html" title="TorchMPS Documentation"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">TorchMPS 0.1 documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">TorchMPS: Matrix Product States in Pytorch</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2021, Jacob Miller.
+    </div>
+  </body>
+</html>

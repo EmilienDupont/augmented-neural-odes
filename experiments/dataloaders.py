@@ -1,4 +1,6 @@
 import glob
+from typing import Tuple
+
 import imageio
 import numpy as np
 import torch
@@ -26,7 +28,8 @@ class Data1D(Dataset):
         Defaults to 0.0 (i.e. no noise). Otherwise, corresponds to standard
         deviation of white noise added to each point.
     """
-    def __init__(self, num_points, target_flip=False, noise_scale=0.0):
+
+    def __init__(self, num_points, target_flip=False, noise_scale=1e-6):
         self.num_points = num_points
         self.target_flip = target_flip
         self.noise_scale = noise_scale
@@ -82,8 +85,9 @@ class ConcentricSphere(Dataset):
     num_points_outer : int
         Number of points in outer cluster
     """
-    def __init__(self, dim, inner_range, outer_range, num_points_inner,
-                 num_points_outer):
+
+    def __init__(self, dim: int, inner_range:Tuple, outer_range: Tuple, num_points_inner:int,
+                 num_points_outer: int):
         self.dim = dim
         self.inner_range = inner_range
         self.outer_range = outer_range
@@ -137,6 +141,7 @@ class ShiftedSines(Dataset):
         Defaults to 0.0 (i.e. no noise). Otherwise, corresponds to standard
         deviation of white noise added to each point.
     """
+
     def __init__(self, dim, shift, num_points_upper, num_points_lower,
                  noise_scale):
         self.dim = dim
@@ -305,6 +310,7 @@ class TinyImageNet(Dataset):
 
     transform : torchvision.transforms
     """
+
     def __init__(self, root_folder='../../tiny-imagenet-200/', transform=None):
         self.root_folder = root_folder
         self.transform = transform

@@ -5,6 +5,8 @@ from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.patches import FancyArrowPatch
 from mpl_toolkits.mplot3d import Axes3D, proj3d
 
+from anode.discrete_models import ResidualBlock
+from anode.models import ODEFunc
 
 categorical_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
 
@@ -12,6 +14,39 @@ all_categorical_colors = ['#1f77b4', '#aec7e8', '#ff7f0e', '#ffbb78', '#2ca02c',
                           '#98df8a', '#d62728', '#ff9896', '#9467bd', '#c5b0d5',
                           '#8c564b', '#c49c94', '#e377c2', '#f7b6d2', '#7f7f7f',
                           '#c7c7c7', '#bcbd22', '#dbdb8d', '#17becf', '#9edae5']
+
+
+def anode_plt(model, num_points, timesteps, inputs, targets, h_min=-2, h_max=2, t_max=1, save_fig=None):
+    """"
+    """
+    """
+    References:
+    https://matplotlib.org/stable/gallery/mplot3d/scatter3d.html
+    https://matplotlib.org/stable/gallery/mplot3d/lines3d.html 
+    """
+    # syntax for 3-D projection
+    ax = plt.axes(projection='3d')
+    # plot inputs
+    color = ['red' if targets[i, 0] > 0 else 'blue' for i in range(len(inputs))]
+    ax.scatter(xs=[0] * len(inputs), ys=inputs[:, 0].numpy(), zs=[0] * len(inputs), color=color, s=80)
+
+    # plot targets
+    ax.scatter(xs=[t_max] * len(targets), ys=targets[:, 0].numpy(), zs=[0] * len(targets), color=color, s=80)
+    # plot trajectory
+    t = np.linspace(0, t_max, timesteps)
+    for i in range(len(inputs)):
+        init_point = inputs[i:i + 1]
+        trajectory = model.trajectory(init_point, timesteps)
+        ax.plot(xs=t, ys=trajectory[:, 0, 0].detach().numpy(), zs=trajectory[:, 0, 1].detach().numpy(), c=color[i],
+                linewidth=2)
+    ax.set_title('ANODE trajectory for 1D input->target')
+    ax.set_zlabel('h[1]')
+    ax.set_xlabel('t')
+    ax.set_ylabel('h[0]')
+    if len(save_fig):
+        plt.savefig(save_fig, format='png', dpi=400, bbox_inches='tight')
+        plt.clf()
+        plt.close()
 
 
 def vector_field_plt(odefunc, num_points, timesteps, inputs=None, targets=None,
@@ -57,7 +92,7 @@ def vector_field_plt(odefunc, num_points, timesteps, inputs=None, targets=None,
     """
     t, hidden, dtdt, dhdt = ode_grid(odefunc, num_points, timesteps,
                                      h_min=h_min, h_max=h_max, t_max=t_max)
-    # Create meshgrid and vector field plot
+    # Create mesh-grid and vector field plot
     t_grid, h_grid = np.meshgrid(t, hidden, indexing='ij')
     plt.quiver(t_grid, h_grid, dtdt, dhdt, width=0.004, alpha=0.6)
 
@@ -80,10 +115,13 @@ def vector_field_plt(odefunc, num_points, timesteps, inputs=None, targets=None,
     if model is not None and inputs is not None:
         color = ['red' if targets[i, 0] > 0 else 'blue' for i in range(len(targets))]
         for i in range(len(inputs)):
-            init_point = inputs[i:i+1]
+            init_point = inputs[i:i + 1]
             trajectory = model.trajectory(init_point, timesteps)
-            plt.plot(t, trajectory[:, 0, 0].detach().numpy(), c=color[i],
-                     linewidth=2)
+            if isinstance(trajectory, list):
+                trajectory = np.array(trajectory)
+            elif isinstance(trajectory, torch.Tensor):
+                trajectory = trajectory[:, 0, 0].detach().numpy()
+            plt.plot(t, trajectory, c=color[i], linewidth=2)
 
     if len(extra_traj):
         for traj, color in extra_traj:
@@ -264,7 +302,7 @@ def single_feature_plt(features, targets, save_fig=''):
     ax.set_aspect(get_square_aspect_ratio(ax))
 
     if len(save_fig):
-        fig.savefig(save_fig, format='png', dpi=200, bbox_inches='tight')
+        plt.savefig(save_fig, format='png', dpi=200, bbox_inches='tight')
         plt.clf()
         plt.close()
     else:
@@ -321,6 +359,20 @@ def multi_feature_plt(features, targets, save_fig=''):
         plt.close()
     else:
         plt.show()
+
+
+def iteration_plt(histories, y, save_fig=''):
+    assert y in ['loss', 'nfe']
+    y = y + "_history"
+    plt.plot(histories[y])
+    plt.xlim(0, len(histories[y]) - 1)
+    plt.ylim(0)
+    plt.xlabel('Iterations')
+    plt.ylabel(y)
+    if len(save_fig):
+        plt.savefig(save_fig, format='png', dpi=400, bbox_inches='tight')
+        plt.clf()
+        plt.close()
 
 
 def trajectory_plt(model, inputs, targets, timesteps, highlight_inputs=False,
@@ -482,13 +534,14 @@ def input_space_plt(model, plot_range=(-2., 2.), num_steps=201, save_fig=''):
     plt.imshow(pred_grid, vmin=-2., vmax=2., cmap=colormap, alpha=0.75)
     plt.colorbar()
     plt.tick_params(axis='both', which='both', bottom=False, top=False,
-                        labelbottom=False, right=False, left=False,
-                        labelleft=False)
+                    labelbottom=False, right=False, left=False,
+                    labelleft=False)
 
     if len(save_fig):
         plt.savefig(save_fig, format='png', dpi=400, bbox_inches='tight')
         plt.clf()
         plt.close()
+
 
 # Helper functions and classes
 
@@ -496,18 +549,19 @@ class Arrow3D(FancyArrowPatch):
     """Class used to draw arrows on 3D plots. Taken from:
     https://stackoverflow.com/questions/22867620/putting-arrowheads-on-vectors-in-matplotlibs-3d-plot
     """
+
     def __init__(self, xs, ys, zs, *args, **kwargs):
         FancyArrowPatch.__init__(self, (0, 0), (0, 0), *args, **kwargs)
         self._verts3d = xs, ys, zs
 
     def draw(self, renderer):
         xs3d, ys3d, zs3d = self._verts3d
-        xs, ys, zs = proj3d.proj_transform(xs3d, ys3d, zs3d, renderer.M)
+        xs, ys, zs = proj3d.proj_transform(xs3d, ys3d, zs3d, renderer.W)
         self.set_positions((xs[0], ys[0]), (xs[1], ys[1]))
         FancyArrowPatch.draw(self, renderer)
 
 
-def ode_grid(odefunc, num_points, timesteps, h_min=-2., h_max=2., t_max=1.):
+def ode_grid(odefunc_or_res_blocks, num_points, timesteps, h_min=-2., h_max=2., t_max=1.):
     """For a 1 dimensional odefunc, returns the points and derivatives at every
     point on a grid. This is useful for plotting vector fields.
 
@@ -531,6 +585,20 @@ def ode_grid(odefunc, num_points, timesteps, h_min=-2., h_max=2., t_max=1.):
     t_max : float
         Maximum time for ODE solution.
     """
+    derivative_type = None
+
+    if isinstance(odefunc_or_res_blocks, ODEFunc):
+        derivative_type = 'continuous'
+    elif isinstance(odefunc_or_res_blocks, torch.nn.Sequential):
+        # FIXME access of a protected attribute
+        modules_list = [x[1] for x in odefunc_or_res_blocks._modules.items()]
+        if all([isinstance(m, ResidualBlock) for m in modules_list]):
+            derivative_type = 'discrete'
+        else:
+            raise ValueError(f'Unsupported module type {str(odefunc_or_res_blocks._modules.items())}')
+    else:
+        raise ValueError(f'unknown type for param odefunc_or_res_blocks : {type(odefunc_or_res_blocks)}.Must be of type'
+                         f'{ODEFunc.__class__.__name__} or List[{ResidualBlock.__class__.__name__}]')
     # Vector field is defined at every point (t[i], hidden[j])
     t = np.linspace(0., t_max, timesteps)
     hidden = np.linspace(h_min, h_max, num_points)
@@ -542,7 +610,13 @@ def ode_grid(odefunc, num_points, timesteps, h_min=-2., h_max=2., t_max=1.):
         for j in range(len(hidden)):
             # Ensure h_j has shape (1, 1) as this is expected by odefunc
             h_j = torch.Tensor([hidden[j]]).unsqueeze(0)
-            dhdt[i, j] = odefunc(t[i], h_j)
+            if derivative_type == 'continuous':
+                dhdt[i, j] = odefunc_or_res_blocks(t[i], h_j)
+            elif derivative_type == 'discrete':
+                dhdt_scalar_val = odefunc_or_res_blocks[i].mlp(h_j)
+                dhdt[i, j] = dhdt_scalar_val
+            else:
+                raise ValueError(f'Unknown derivative type : {derivative_type}')
     return t, hidden, dtdt, dhdt
 
 
@@ -570,10 +644,10 @@ def get_feature_history(trainer, dataloader, inputs, targets, num_epochs):
     feature_history.append(features.detach())
 
     for i in range(num_epochs):
-        trainer.train(dataloader, 1)
+        loss = trainer.train(dataloader, 1)  # work around
         features, _ = trainer.model(inputs, return_features=True)
         feature_history.append(features.detach())
-
+        print(f'Epoch = {i + 1} : loss = {loss}')
     return feature_history
 
 
