@@ -1,0 +1,44 @@
+18 Nov 2022
+=======================
+**Successfull runs**
+break training if loss < 1e-3 or till epochs =200
+Data            Model           Finalloss(Smooth1loss)      Running-time(seconds)       n-epochs        nfe@n_epochs
+flip1d          ResNet          9e-5                        5                           56/200          None
+flip1d          NODE            0.5                         47                          200/200         50
+flip1d          ANODE           6e-7                        3                           18/200          20
+flip1d          TODE(poly-3)    9-4                         19                          200/200         ??
+                mytorch
+flip1d          TODE(poly-3)    5e-11                       41                          50/200          ??
+                torchdiffeq
+conc-sphere-2d  ResNet          5e-5                        12                          182/200         None
+conc-sphere-2d  Node            4e-4                        31                          200/200         32
+conc-sphere-2d  Anode           1.3e-4                      25                          200/200         26
+conc-sphere-2d  TODE(poly-3)    5e-3                        18                          200/200         ??
+
+
+
+================================
+Notes :
+1- TODE with poly-1 is unstable, sometimes it stucks
+2- with poly_deg > 1, the code stucks
+3- TODE  nfe is unreasonable
+
+========================================================
+29 Sep 2022
+---------------------
+initial model with non-lineariy sigma(U.A) in the derivative function and the Final function F is a tensor
+
+final result
+
+DEBUG:root:Epoch # 1000 and batch-iter # 21 : loss = 0.5133312940597534
+================================================================================
+
+29 Sep 2022
+----------------
+Monitor Parameters U,P,F evolution over training pass (fw/bw) calls
+
+============================================================================
+
+
+
+

@@ -1,0 +1,14 @@
+# Unit tests 
+pytest ~= 5.1.3
+pytest-cov ~= 2.11.1
+hypothesis ~= 6.8.1
+
+# Benchmarking
+pytest-benchmark ~= 3.4.1
+
+# Formatting
+black ~= 20.8b1
+flake8 ~= 3.9.1
+
+# Documentation
+sphinx ~= 3.5.1

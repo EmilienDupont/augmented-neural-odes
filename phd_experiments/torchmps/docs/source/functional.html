@@ -1,0 +1,120 @@
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Functional MPS &#8212; TorchMPS 0.1 documentation</title>
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/classic.css" type="text/css" />
+    
+    <script id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+    <script src="../_static/jquery.js"></script>
+    <script src="../_static/underscore.js"></script>
+    <script src="../_static/doctools.js"></script>
+    
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Adaptive Learning with SGD and DMRG" href="adaptive.html" />
+    <link rel="prev" title="TorchMPS Basic Usage" href="basic_usage.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="adaptive.html" title="Adaptive Learning with SGD and DMRG"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="basic_usage.html" title="TorchMPS Basic Usage"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">TorchMPS 0.1 documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Functional MPS</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="functional-mps">
+<h1>Functional MPS<a class="headerlink" href="#functional-mps" title="Permalink to this headline">¶</a></h1>
+<p>The possible arguments for defining an MPS are:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p><cite>input_dim</cite>: The dimension of the input we feed to our MPS</p></li>
+<li><p><cite>output_dim</cite>: The dimension of the output we get from each input</p></li>
+<li><p><cite>bond_dim</cite>: The internal bond dimension, a hyperparameter that sets the expressivity of our MPS. When in adaptive training mode, <cite>bond_dim</cite> instead sets the <strong>maximum</strong> possible bond dimension, with the initial bond dimension equal to <cite>output_dim</cite></p></li>
+<li><p><cite>feature_dim</cite>: The dimension of the local feature spaces we embed each datum in (_default = <a href="#id1"><span class="problematic" id="id2">2_</span></a>)</p></li>
+<li><p><cite>adaptive_mode</cite>: Whether our MPS is trained with its bond dimensions chosen adaptively or are fixed at creation (_default = False (fixed bonds)_)</p></li>
+<li><p><cite>periodic_bc</cite>: Whether our MPS has periodic boundary conditions (making it a tensor ring) or open boundary conditions (_default = False (open boundaries)_)</p></li>
+<li><p><cite>parallel_eval</cite>: For open boundary conditions, whether contraction of tensors is performed serially or in parallel (_default = False (serial)_)</p></li>
+<li><p><cite>label_site</cite>: The location in the MPS chain where our output lives after contracting all other sites with inputs (_default = input_dim // <a href="#id3"><span class="problematic" id="id4">2_</span></a>)</p></li>
+<li><p><cite>path</cite>: A list specifying the path our MPS takes through the input data. For example, <cite>path = [0, 1, …, input_dim-1]</cite> gives the standard in-order traversal (used if <cite>path = None</cite>), while <cite>path = [0, 2, …, input_dim-1]</cite> defines an MPS which only acts on even-valued sites within our input (_default = <a href="#id5"><span class="problematic" id="id6">None_</span></a>)</p></li>
+<li><p><cite>cutoff</cite>: The singular value cutoff which controls adaptation of bond dimensions (_default = <a href="#id7"><span class="problematic" id="id8">1e-9_</span></a>)</p></li>
+<li><p><cite>merge_threshold</cite>: The number of inputs before our MPS dynamically shifts its merge state, which updates half the bond dimensions at a time (_default = 2000, only used in adaptive <a href="#id9"><span class="problematic" id="id10">mode_</span></a>)</p></li>
+<li><p><cite>init_std</cite>: The size of the random terms used during initialization (_default = <a href="#id11"><span class="problematic" id="id12">1e-9_</span></a>)</p></li>
+</ul>
+</div></blockquote>
+<p>To define a custom feature map for embedding input data, first define a function <cite>feature_map</cite> which acts on a single scalar input and outputs a Pytorch vector of size <cite>feature_dim</cite>. After initializing an MPS <cite>my_mps</cite>, simply call <cite>my_mps.register_feature_map(feature_map)</cite>, and the user-specified <cite>feature_map</cite> will be applied to all input data given to <cite>my_mps</cite>. If <cite>feature_map</cite> is also a Pytorch Module, then any parameters associated with the map will be included in <cite>my_mps.parameters()</cite>. This streamlines the use of trainable feature maps within an MPS model.</p>
+</div>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="basic_usage.html"
+                        title="previous chapter">TorchMPS Basic Usage</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="adaptive.html"
+                        title="next chapter">Adaptive Learning with SGD and DMRG</a></p>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/source/functional.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="adaptive.html" title="Adaptive Learning with SGD and DMRG"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="basic_usage.html" title="TorchMPS Basic Usage"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">TorchMPS 0.1 documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Functional MPS</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2021, Jacob Miller.
+    </div>
+  </body>
+</html>

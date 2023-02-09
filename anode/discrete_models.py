@@ -5,6 +5,7 @@ class ResidualBlock(nn.Module):
     """Following the structure of the one implemented in
     https://arxiv.org/pdf/1806.10909.pdf
     """
+
     def __init__(self, data_dim, hidden_dim):
         super(ResidualBlock, self).__init__()
         self.data_dim = data_dim
@@ -25,6 +26,7 @@ class ResNet(nn.Module):
     """ResNet which maps data_dim dimensional points to an output_dim
     dimensional output.
     """
+
     def __init__(self, data_dim, hidden_dim, num_layers, output_dim=1,
                  is_img=False):
         super(ResNet, self).__init__()
@@ -48,6 +50,24 @@ class ResNet(nn.Module):
             return features, pred
         return pred
 
+    def trajectory(self, x, timesteps):
+        features = self.residual_blocks(x)
+        y = self.linear_layer(features)
+        trajectory = []
+        for t in range(1, timesteps + 1):
+            if self.is_img:
+                # Flatten image, i.e. (batch_size, channels, height, width) to
+                # (batch_size, channels * height * width)
+
+                features = self.residual_blocks[:t](x.view(x.size(0), -1))
+            else:
+                submodule = self.residual_blocks[:t]
+                features = self.residual_blocks[:t](x)
+            pred = self.linear_layer(features)
+            trajectory.append(pred.item())
+        trajectory[0] = x.item()
+        return trajectory
+
     @property
     def hidden_dim(self):
         return self.residual_blocks.hidden_dim
@@ -56,6 +76,7 @@ class ResNet(nn.Module):
 class MLPNet(nn.Module):
     """
     """
+
     def __init__(self, data_dim, hidden_dim):
         super(MLPNet, self).__init__()
         self.data_dim = data_dim

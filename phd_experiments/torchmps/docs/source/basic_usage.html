@@ -1,0 +1,118 @@
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TorchMPS Basic Usage &#8212; TorchMPS 0.1 documentation</title>
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/classic.css" type="text/css" />
+    
+    <script id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+    <script src="../_static/jquery.js"></script>
+    <script src="../_static/underscore.js"></script>
+    <script src="../_static/doctools.js"></script>
+    
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Functional MPS" href="functional.html" />
+    <link rel="prev" title="TorchMPS: Matrix Product States in Pytorch" href="intro.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="functional.html" title="Functional MPS"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="intro.html" title="TorchMPS: Matrix Product States in Pytorch"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">TorchMPS 0.1 documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">TorchMPS Basic Usage</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="torchmps-basic-usage">
+<h1>TorchMPS Basic Usage<a class="headerlink" href="#torchmps-basic-usage" title="Permalink to this headline">¶</a></h1>
+<p>As our models are built on Pytorch, users will need to have this installed in a directory contained in the environment variable <cite>PYTHONPATH</cite>. Torchvision is also used in our example script <cite>train_script.py</cite>, but not anywhere else.</p>
+<p>After cloning the repo, running <cite>train_script.py</cite> gives a simple example of how our MPS can be used to classify MNIST digits. In general, MPS models can be invoked by simply importing the class <cite>MPS</cite> from <cite>torchmps.py</cite>, and then creating a new <cite>MPS</cite> instance. For example, an MPS which converts 28x28 grayscale images into a 10 dimensional output vector can be utilized as follows:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">torch</span>
+<span class="kn">from</span> <span class="nn">torchmps</span> <span class="k">import</span> <span class="n">MPS</span>
+
+<span class="c1"># Initialize functional MPS for 28x32 images</span>
+<span class="n">my_mps</span> <span class="o">=</span> <span class="n">MPS</span><span class="p">(</span><span class="n">input_dim</span><span class="o">=</span><span class="mi">28</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span> <span class="n">output_dim</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">bond_dim</span><span class="o">=</span><span class="mi">23</span><span class="p">)</span>
+
+<span class="c1"># Now get a batch of flattened images</span>
+<span class="n">flat_images</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">28</span><span class="p">,</span> <span class="mi">28</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+<span class="c1"># Feed images to the MPS to get outputs</span>
+<span class="n">outputs</span> <span class="o">=</span> <span class="n">my_mps</span><span class="p">(</span><span class="n">flat_images</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>That’s it! After creation, <cite>my_mps</cite> acts as a stateful function whose internal parameters can be trained exactly as any other Pytorch Module (e.g. nn.Linear, nn.Conv1d, nn.Sequential, etc)</p>
+</div>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="intro.html"
+                        title="previous chapter">TorchMPS: Matrix Product States in Pytorch</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="functional.html"
+                        title="next chapter">Functional MPS</a></p>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/source/basic_usage.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="functional.html" title="Functional MPS"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="intro.html" title="TorchMPS: Matrix Product States in Pytorch"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">TorchMPS 0.1 documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">TorchMPS Basic Usage</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2021, Jacob Miller.
+    </div>
+  </body>
+</html>

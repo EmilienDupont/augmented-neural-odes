@@ -1,0 +1,189 @@
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TorchMPS Documentation &#8212; TorchMPS 0.1 documentation</title>
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <link rel="stylesheet" href="_static/classic.css" type="text/css" />
+    
+    <script id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/doctools.js"></script>
+    
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="TorchMPS: Matrix Product States in Pytorch" href="source/intro.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="source/intro.html" title="TorchMPS: Matrix Product States in Pytorch"
+             accesskey="N">next</a> |</li>
+        <li class="nav-item nav-item-0"><a href="#">TorchMPS 0.1 documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">TorchMPS Documentation</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="torchmps-documentation">
+<h1>TorchMPS Documentation<a class="headerlink" href="#torchmps-documentation" title="Permalink to this headline">¶</a></h1>
+<p>Contents:</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="source/intro.html">TorchMPS: Matrix Product States in Pytorch</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="source/intro.html#what-our-mps-models-do">What our MPS Models Do</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="source/basic_usage.html">TorchMPS Basic Usage</a></li>
+<li class="toctree-l1"><a class="reference internal" href="source/functional.html">Functional MPS</a></li>
+<li class="toctree-l1"><a class="reference internal" href="source/adaptive.html">Adaptive Learning with SGD and DMRG</a></li>
+<li class="toctree-l1"><a class="reference internal" href="source/software.html">Similar Software</a></li>
+<li class="toctree-l1"><a class="reference internal" href="source/citing.html">Citing TorchMPS</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="source/citing.html#id5">}</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</div>
+<div class="section" id="some-autodoc-stuff">
+<h1>Some Autodoc Stuff<a class="headerlink" href="#some-autodoc-stuff" title="Permalink to this headline">¶</a></h1>
+<dl class="py class">
+<dt id="torchmps.MPS">
+<em class="property"><span class="pre">class</span> </em><code class="sig-prename descclassname"><span class="pre">torchmps.</span></code><code class="sig-name descname"><span class="pre">MPS</span></code><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input_dim</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_dim</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bond_dim</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">feature_dim</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">periodic_bc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parallel_eval</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label_site</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init_std</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1e-09</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">initializer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_bias</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">adaptive_mode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cutoff</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1e-10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">merge_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2000</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/torchmps.html#MPS"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchmps.MPS" title="Permalink to this definition">¶</a></dt>
+<dd><p>Tunable MPS model giving mapping from fixed-size data to output vector</p>
+<p>Model works by first converting each ‘pixel’ (local data) to feature 
+vector via a simple embedding, then contracting embeddings with inputs 
+to each MPS cores. The resulting transition matrices are contracted 
+together along bond dimensions (i.e. hidden state spaces), with output
+produced via an uncontracted edge of an additional output core.</p>
+<p>MPS model permits many customizable behaviors, including custom 
+‘routing’ of MPS through the input, choice of boundary conditions 
+(meaning the model can act as a tensor train or a tensor ring), 
+GPU-friendly parallel evaluation, and an experimental mode to support
+adaptive choice of bond dimensions based on singular value spectrum.</p>
+<dl>
+<dt>Args:</dt><dd><p>input_dim:       Number of ‘pixels’ in the input to the MPS
+output_dim:      Size of the vectors output by MPS via output core
+bond_dim:        Dimension of the ‘bonds’ connecting adjacent MPS</p>
+<blockquote>
+<div><p>cores, which act as hidden state spaces of the 
+model. In adaptive mode, bond_dim instead 
+specifies the maximum allowed bond dimension</p>
+</div></blockquote>
+<dl class="simple">
+<dt>feature_dim:     Size of the local feature spaces each pixel is</dt><dd><p>embedded into (default: 2)</p>
+</dd>
+<dt>periodic_bc:     Whether MPS has periodic boundary conditions (i.e. </dt><dd><p>is a tensor ring) or open boundary conditions 
+(i.e. is a tensor train) (default: False)</p>
+</dd>
+<dt>parallel_eval:   Whether contraction of tensors is performed in a </dt><dd><p>serial or parallel fashion. The former is less 
+expensive for open boundary conditions, but 
+parallelizes more poorly (default: False)</p>
+</dd>
+<dt>label_site:      Location in the MPS chain where output is placed</dt><dd><p>(default: input_dim // 2)</p>
+</dd>
+<dt>path:            List specifying a path through the input data</dt><dd><p>which MPS is ‘routed’ along. For example, choosing
+path=[0, 1, …, input_dim-1] gives a standard 
+in-order traversal (behavior when path=None), while 
+path=[0, 2, …, input_dim-1] specifies an MPS 
+accepting input only from even-valued input pixels 
+(default: None)</p>
+</dd>
+<dt>init_std:        Size of the Gaussian noise used in default </dt><dd><p>near-identity initialization (default: 1e-9)</p>
+</dd>
+<dt>initializer:     Pytorch initializer for custom initialization of</dt><dd><p>MPS cores, with None specifying default 
+near-identity initialization (default: None)</p>
+</dd>
+<dt>use_bias:        Whether to use trainable bias matrices in MPS</dt><dd><p>cores, which are initialized near the zero matrix
+(default: False)</p>
+</dd>
+<dt>adaptive_mode:   Whether MPS is trained with experimental adaptive</dt><dd><p>bond dimensions selection (default: False)</p>
+</dd>
+<dt>cutoff:          Singular value cutoff controlling bond dimension</dt><dd><p>adaptive selection (default: 1e-9)</p>
+</dd>
+<dt>merge_threshold: Number of inputs before adaptive MPS shifts its </dt><dd><p>merge state once, with two shifts leading to the 
+update of all bond dimensions (default: 2000)</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+<div class="section" id="indices-and-tables">
+<h1>Indices and tables<a class="headerlink" href="#indices-and-tables" title="Permalink to this headline">¶</a></h1>
+<ul class="simple">
+<li><p><a class="reference internal" href="genindex.html"><span class="std std-ref">Index</span></a></p></li>
+<li><p><a class="reference internal" href="py-modindex.html"><span class="std std-ref">Module Index</span></a></p></li>
+<li><p><a class="reference internal" href="search.html"><span class="std std-ref">Search Page</span></a></p></li>
+</ul>
+</div>
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="#">Table of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">TorchMPS Documentation</a></li>
+<li><a class="reference internal" href="#some-autodoc-stuff">Some Autodoc Stuff</a></li>
+<li><a class="reference internal" href="#indices-and-tables">Indices and tables</a></li>
+</ul>
+
+  <h4>Next topic</h4>
+  <p class="topless"><a href="source/intro.html"
+                        title="next chapter">TorchMPS: Matrix Product States in Pytorch</a></p>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/index.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="source/intro.html" title="TorchMPS: Matrix Product States in Pytorch"
+             >next</a> |</li>
+        <li class="nav-item nav-item-0"><a href="#">TorchMPS 0.1 documentation</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">TorchMPS Documentation</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2021, Jacob Miller.
+    </div>
+  </body>
+</html>
